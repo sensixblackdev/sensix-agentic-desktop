@@ -1,0 +1,49 @@
+name: SENSIX Desktop Release
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - run: pnpm exec electron-builder --win nsis --publish never --config.directories.output=release
+      - name: Generate release manifest and checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem 'release' -Filter '*.exe' | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer was not generated.' }
+          $manifest = @{
+            version = '${{ github.ref_name }}'
+            file = $installer.Name
+            sha256 = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json
+          Set-Content -LiteralPath 'release/release-manifest.json' -Value $manifest -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sensix-agentic-desktop-${{ github.run_id }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/release-manifest.json
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/release-manifest.json
