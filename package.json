@@ -1,0 +1,32 @@
+{
+  "name": "sensix-agentic-desktop",
+  "version": "0.2.2",
+  "description": "AXION Agentic Desktop — RunPod GPU Serverless com tools, shell e coding",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer/app.js"
+  },
+  "devDependencies": {
+    "electron": "^39.2.6",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.axion.sensix.agentic",
+    "productName": "SENSIX Agentic Desktop",
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "renderer/**/*",
+      "README.md"
+    ],
+    "directories": {
+      "output": "E:/axion/dists/sensix-agentic-desktop"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

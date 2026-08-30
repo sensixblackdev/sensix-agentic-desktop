@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+    <title>SENSIX Agentic Desktop</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="window-shell">
+      <header class="windowbar" aria-label="Controles da janela">
+        <div class="windowbar-brand"><span class="brand-mark">S</span><span>SENSIX <small>AGENTIC DESKTOP</small></span></div>
+        <div class="window-actions">
+          <button class="window-action" type="button" data-action="window-minimize" aria-label="Minimizar">−</button>
+          <button class="window-action" type="button" data-action="window-maximize" aria-label="Maximizar">□</button>
+          <button class="window-action window-close" type="button" data-action="window-close" aria-label="Fechar">×</button>
+        </div>
+      </header>
+
+      <div class="app-layout">
+        <aside class="sidebar" aria-label="Navegação do agente">
+          <div class="sidebar-top">
+            <button class="new-session" type="button" data-action="new-session"><span class="svg-icon" data-icon="plus" aria-hidden="true"></span><span>Nova sessão</span><kbd>Ctrl N</kbd></button>
+            <div class="project-filter"><div class="project-filter-head"><span>Projeto</span><button class="text-action" type="button" data-action="new-project">Novo</button></div><select id="project-filter" aria-label="Filtrar sessões por projeto"><option value="all">Todos os projetos</option></select></div>
+            <div class="sidebar-label-row"><div class="sidebar-label">Sessões recentes</div><button class="text-action" type="button" data-action="toggle-archived">Arquivados</button></div>
+            <div id="session-list" class="session-list" role="list"></div>
+          </div>
+          <div class="sidebar-bottom">
+            <div class="connection-card" id="connection-card">
+              <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+              <div><strong id="connection-label">Gateway não configurado</strong><small id="connection-detail">Configure uma chave para começar</small></div>
+            </div>
+            <button class="sidebar-link" type="button" data-action="open-settings"><span class="svg-icon" data-icon="settings" aria-hidden="true"></span><span>Configurações</span></button>
+          </div>
+        </aside>
+
+        <main class="main-panel">
+          <header class="chat-header">
+            <div class="chat-heading"><span class="eyebrow">WORKSPACE AGÊNTICO</span><h1>Conversa com o agente</h1><span class="chat-context" id="chat-context">Projeto Geral · Sessão persistente</span></div>
+            <div class="header-controls">
+              <div class="agent-capabilities" id="agent-capabilities" title="Permissões locais do agente">
+                <span class="svg-icon" data-icon="terminal" aria-hidden="true"></span>
+                <span><strong>Tools ativas</strong><small id="permission-summary">Shell + Coding</small></span>
+              </div>
+              <button id="ephemeral-toggle" class="mode-toggle" type="button" data-action="toggle-ephemeral" aria-pressed="false" title="Sessão efêmera: não salvar no histórico"><span class="svg-icon" data-icon="clock" aria-hidden="true"></span><span class="mode-toggle-label">Persistente</span></button>
+              <label class="model-picker"><span>Modelo</span><select id="model-select" aria-label="Modelo do agente"><option value="">Nenhum modelo carregado</option></select></label>
+              <button class="icon-button" type="button" data-action="refresh-models" aria-label="Atualizar modelos" title="Atualizar modelos"><span class="svg-icon" data-icon="refresh" aria-hidden="true"></span></button>
+            </div>
+          </header>
+
+          <section id="chat-scroll" class="chat-scroll" aria-live="polite">
+            <div id="empty-state" class="empty-state">
+              <div class="empty-icon"><span class="svg-icon" data-icon="spark" aria-hidden="true"></span></div>
+              <h2>Um espaço para pensar e executar</h2>
+              <p>Descreva o objetivo. Escolha GPT-OSS 120B para código e tools, ou Qwen3 32B para respostas ágeis; ambos usam GPU RunPod serverless.</p>
+              <div class="prompt-suggestions" role="list">
+                <button type="button" data-action="suggestion" data-prompt="Inspecione o projeto atual, identifique o stack e mostre os arquivos principais.">Inspecionar workspace</button>
+                <button type="button" data-action="suggestion" data-prompt="Revise o código deste projeto, encontre inconsistências e proponha correções verificáveis.">Revisar código</button>
+                <button type="button" data-action="suggestion" data-prompt="Execute os checks de sintaxe disponíveis neste projeto e corrija os erros encontrados.">Validar projeto</button>
+              </div>
+            </div>
+            <div id="message-list" class="message-list"></div>
+            <button id="scroll-to-bottom" class="scroll-to-bottom hidden" type="button" data-action="scroll-to-bottom" aria-label="Ir para a mensagem mais recente" aria-hidden="true"><span class="svg-icon" data-icon="arrowDown" aria-hidden="true"></span><span>Mensagens recentes</span></button>
+          </section>
+
+          <footer class="composer-area">
+            <div id="run-status" class="run-status" aria-live="polite"></div>
+            <form id="composer-form" class="composer-form">
+              <textarea id="composer-input" rows="1" maxlength="20000" placeholder="Descreva o que você quer realizar..." aria-label="Mensagem para o agente"></textarea>
+              <div id="steer-panel" class="steer-panel hidden"><input id="steer-input" type="text" maxlength="1000" placeholder="Ex.: priorize testes e não altere APIs públicas" aria-label="Instrução de steer para o próximo turno" /><button type="button" class="button secondary" data-action="apply-steer">Aplicar</button></div>
+              <div class="composer-toolbar"><div class="composer-tools"><div class="popover-anchor"><button id="run-mode-button" class="control-pill" type="button" data-action="toggle-popover" data-popover="run-mode-popover" aria-expanded="false"><span class="svg-icon" data-icon="spark" aria-hidden="true"></span><span id="run-mode-label">Normal</span></button><div id="run-mode-popover" class="control-popover hidden"><button type="button" data-action="choose-mode" data-mode="normal"><strong>Normal</strong><small>Executar e responder</small></button><button type="button" data-action="choose-mode" data-mode="plan"><strong>Plan</strong><small>Planejar sem executar tools</small></button><button type="button" data-action="choose-mode" data-mode="driven"><strong>Driven code</strong><small>Perguntar antes de ambiguidades</small></button></div></div><div class="popover-anchor"><button id="action-mode-button" class="control-pill" type="button" data-action="toggle-popover" data-popover="action-mode-popover" aria-expanded="false"><span class="svg-icon" data-icon="shield" aria-hidden="true"></span><span id="action-mode-label">Ação normal</span></button><div id="action-mode-popover" class="control-popover hidden"><button type="button" data-action="choose-action-mode" data-mode="normal"><strong>Ação normal</strong><small>Guardrails ativos</small></button><button type="button" data-action="choose-action-mode" data-mode="full-access"><strong>Full-access</strong><small>Confirma ações sensíveis</small></button></div></div><select id="run-mode-select" class="hidden" aria-label="Modo do agente"><option value="normal">Normal</option><option value="plan">Plan</option><option value="driven">Driven code</option></select><select id="action-mode-select" class="hidden" aria-label="Modo de ação"><option value="normal">Ação normal</option><option value="full-access">Full-access</option></select><button type="button" class="text-action" data-action="toggle-steer">Steer</button><span class="composer-hint">Enter envia · Shift+Enter quebra linha</span></div><button id="send-button" class="send-button" type="submit"><span>Enviar</span><span class="svg-icon" data-icon="arrow-up" aria-hidden="true"></span></button></div>
+            </form>
+          </footer>
+        </main>
+      </div>
+    </div>
+
+    <div id="settings-modal" class="modal-backdrop hidden" role="presentation">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-header"><div><span class="eyebrow">RUNPOD GPU SERVERLESS</span><h2 id="settings-title">Configurar agente</h2></div><button class="icon-button" type="button" data-action="close-settings" aria-label="Fechar configurações"><span class="svg-icon" data-icon="close" aria-hidden="true"></span></button></div>
+        <p class="modal-copy">A inferência usa o endpoint vLLM da A100. Tools, shell e edição rodam somente no processo principal do Electron; o renderer permanece isolado.</p>
+        <form id="settings-form" class="settings-form">
+          <div class="settings-section"><span class="settings-section-title">Conexão do gateway</span><span class="settings-section-copy">Gateway SENSIX com catálogo RunPod em GPU serverless e escala a zero.</span></div>
+          <label>URL base<input id="base-url-input" type="url" autocomplete="url" placeholder="http://174.78.228.101:40746/v1" required /></label>
+          <label>Chave de API <small class="field-hint">Bearer do gateway SENSIX; guardado criptografado somente neste computador.</small><input id="api-key-input" type="password" autocomplete="off" placeholder="Informe o bearer do gateway SENSIX" /></label>
+          <div class="settings-section"><span class="settings-section-title">Execução e aparência</span><span class="settings-section-copy">Preferências locais do desktop.</span></div>
+          <div class="settings-grid"><label>Modo de ação<select id="action-mode-input"><option value="guarded">Protegido · bloqueia destrutivo</option><option value="full-access">Full-access · confirma ações sensíveis</option></select></label><label>Tema<select id="theme-input"><option value="obsidian">Obsidian</option><option value="slate">Slate</option><option value="cyber">Cyber / Matrix</option><option value="light">Claro</option></select></label></div>
+          <div class="permissions-panel" aria-label="Permissões concedidas ao agente">
+            <div><span class="permission-state active" aria-hidden="true"></span><span><strong>Shell PowerShell</strong><small>Execução real com timeout e bloqueio destrutivo</small></span></div>
+            <div><span class="permission-state active" aria-hidden="true"></span><span><strong>Coding no workspace</strong><small>Leitura, pesquisa e edição em D:\WORKSPACE</small></span></div>
+            <div><span class="permission-state blocked" aria-hidden="true"></span><span><strong>Segredos e Vault</strong><small>Acesso permanentemente bloqueado</small></span></div>
+          </div>
+          <p id="settings-state" class="form-state"></p>
+          <div class="modal-actions"><button class="button secondary" type="button" data-action="clear-settings">Remover chave</button><button id="save-settings-button" class="button primary" type="submit">Salvar e testar conexão</button></div>
+        </form>
+      </section>
+    </div>
+    <div id="confirm-modal" class="modal-backdrop hidden" role="presentation">
+      <section class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div class="modal-header"><div><span class="eyebrow">AÇÃO IRREVERSÍVEL</span><h2 id="confirm-title">Excluir conversa?</h2></div><button class="icon-button" type="button" data-action="close-confirm" aria-label="Fechar confirmação"><span class="svg-icon" data-icon="close" aria-hidden="true"></span></button></div>
+        <p id="confirm-copy" class="modal-copy">Esta conversa será removida deste dispositivo.</p>
+        <div class="modal-actions"><button class="button secondary" type="button" data-action="close-confirm">Cancelar</button><button class="button danger" type="button" data-action="confirm-delete">Excluir conversa</button></div>
+      </section>
+    </div>
+    <div id="project-modal" class="modal-backdrop hidden" role="presentation"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="project-title"><div class="modal-header"><div><span class="eyebrow">ORGANIZAÇÃO LOCAL</span><h2 id="project-title">Novo projeto</h2></div><button class="icon-button" type="button" data-action="close-project" aria-label="Fechar"><span class="svg-icon" data-icon="close" aria-hidden="true"></span></button></div><form id="project-form" class="settings-form"><label>Nome do projeto<input id="project-name-input" required maxlength="80" placeholder="Ex.: SENSIX Desktop" /></label><label>Pasta de trabalho<input id="project-folder-input" required placeholder="Escolha uma pasta" readonly /><button class="button secondary" type="button" data-action="choose-project-folder">Escolher pasta</button></label><p id="project-state" class="form-state"></p><div class="modal-actions"><button class="button secondary" type="button" data-action="close-project">Cancelar</button><button class="button primary" type="submit">Criar projeto</button></div></form></section></div>
+    <script src="app.js"></script>
+  </body>
+</html>
