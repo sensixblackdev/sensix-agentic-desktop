@@ -34,7 +34,7 @@ jobs:
           Set-Content -LiteralPath 'release/release-manifest.json' -Value $manifest -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
-          name: sensix-agentic-desktop-${{ github.ref_name }}
+          name: sensix-agentic-desktop-${{ github.run_id }}
           path: |
             release/*.exe
             release/*.blockmap
