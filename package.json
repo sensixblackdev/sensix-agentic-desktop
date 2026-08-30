@@ -1,6 +1,6 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "AXION Agentic Desktop — RunPod GPU Serverless com tools, shell e coding",
   "main": "main.cjs",
   "private": true,
@@ -25,6 +25,7 @@
     "directories": {
       "output": "E:/axion/dists/sensix-agentic-desktop"
     },
+    "artifactName": "SENSIX.Agentic.Desktop.Setup.${version}.${ext}",
     "win": {
       "target": "nsis"
     }
