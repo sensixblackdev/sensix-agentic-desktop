@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.3",
-  "description": "SENSIX Agentic Desktop — Gateway multi-tier com autonomia total, anexos de pastas/arquivos e ReAct anti-procrastinação",
+  "version": "0.3.4",
+  "description": "SENSIX Agentic Desktop — Multi-tool JSON depth parser, folder attachments, drag-drop and anti-procrastination ReAct",
   "main": "main.cjs",
   "private": true,
   "scripts": {

@@ -144,31 +144,31 @@ function publicSettings() {
 
 function extractToolCallsFromContent(content) {
   if (typeof content !== 'string') return [];
-  let trimmed = content.trim();
-  if (trimmed.startsWith('```json') && trimmed.endsWith('```')) trimmed = trimmed.slice(7, -3).trim();
-  else if (trimmed.startsWith('```') && trimmed.endsWith('```')) trimmed = trimmed.slice(3, -3).trim();
-
   const authorized = ['list_files', 'read_file', 'search_text', 'write_file', 'replace_in_file', 'shell_exec', 'make_directory'];
-  try {
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-      const parsed = JSON.parse(trimmed);
-      const name = parsed.name || parsed.function || parsed.tool;
-      const args = parsed.arguments || parsed.parameters || parsed.args || {};
-      if (name && authorized.includes(name)) {
-        return [{
-          id: `call_${crypto.randomUUID().slice(0, 8)}`,
-          type: 'function',
-          function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) }
-        }];
-      }
-    } else if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        const calls = [];
-        for (const item of parsed) {
-          if (item && typeof item === 'object') {
-            const name = item.name || item.function || item.tool;
-            const args = item.arguments || item.parameters || item.args || {};
+  const calls = [];
+
+  let depth = 0;
+  let startIdx = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    if (escape) { escape = false; continue; }
+    if (char === '\\') { escape = true; continue; }
+    if (char === '"') { inString = !inString; continue; }
+    if (!inString) {
+      if (char === '{') {
+        if (depth === 0) startIdx = i;
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        if (depth === 0 && startIdx !== -1) {
+          const candidate = content.slice(startIdx, i + 1);
+          try {
+            const parsed = JSON.parse(candidate);
+            const name = parsed.name || parsed.function || parsed.tool;
+            const args = parsed.arguments || parsed.parameters || parsed.args || {};
             if (name && authorized.includes(name)) {
               calls.push({
                 id: `call_${crypto.randomUUID().slice(0, 8)}`,
@@ -176,13 +176,36 @@ function extractToolCallsFromContent(content) {
                 function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) }
               });
             }
-          }
+          } catch {}
+          startIdx = -1;
         }
-        if (calls.length > 0) return calls;
       }
     }
-  } catch {}
-  return [];
+  }
+
+  if (calls.length === 0) {
+    try {
+      let trimmed = content.trim();
+      if (trimmed.startsWith('```json') && trimmed.endsWith('```')) trimmed = trimmed.slice(7, -3).trim();
+      else if (trimmed.startsWith('```') && trimmed.endsWith('```')) trimmed = trimmed.slice(3, -3).trim();
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const name = item?.name || item?.function || item?.tool;
+          const args = item?.arguments || item?.parameters || item?.args || {};
+          if (name && authorized.includes(name)) {
+            calls.push({
+              id: `call_${crypto.randomUUID().slice(0, 8)}`,
+              type: 'function',
+              function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) }
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return calls;
 }
 
 function requestHeaders(token, traceId, baseUrl) {
