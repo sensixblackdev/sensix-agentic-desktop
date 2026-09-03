@@ -49,9 +49,28 @@ const TOOL_DEFINITIONS = [
   tool('write_file', 'Cria ou sobrescreve atomicamente um arquivo de texto dentro do workspace.', {
     path: { type: 'string' }, content: { type: 'string' },
   }, ['path', 'content']),
+  tool('patch_file', 'Edita cirurgicamente um arquivo existente substituindo old_string por new_string. old_string deve ocorrer exatamente uma única vez no arquivo para garantir precisão.', {
+    path: { type: 'string', description: 'Caminho do arquivo relativo a D:\\WORKSPACE' },
+    old_string: { type: 'string', description: 'Trecho exato existente a ser substituído (deve ser único no arquivo)' },
+    new_string: { type: 'string', description: 'Novo trecho substituto' },
+  }, ['path', 'old_string', 'new_string']),
   tool('replace_in_file', 'Substitui texto exato em um arquivo dentro do workspace.', {
     path: { type: 'string' }, old_text: { type: 'string' }, new_text: { type: 'string' }, replace_all: { type: 'boolean' },
   }, ['path', 'old_text', 'new_text']),
+  tool('todo_write', 'Cria e atualiza a lista de tarefas e etapas ativas do agente para visualização em tempo real pelo usuário. Use sempre no início de tarefas compostas e atualize o status para cada passo.', {
+    todos: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Identificador único da etapa' },
+          task: { type: 'string', description: 'Descrição da subtarefa' },
+          status: { type: 'string', enum: ['pending', 'in_progress', 'completed'], description: 'Status atual' }
+        },
+        required: ['id', 'task', 'status']
+      }
+    }
+  }, ['todos']),
   tool('shell_exec', 'Executa PowerShell real para coding, Git, diagnóstico e validação. Comandos destrutivos e acesso a segredos são bloqueados.', {
     command: { type: 'string' },
     cwd: { type: 'string', description: 'Diretório relativo ao workspace; padrão .' },
@@ -144,7 +163,7 @@ function publicSettings() {
 
 function extractToolCallsFromContent(content) {
   if (typeof content !== 'string') return [];
-  const authorized = ['list_files', 'read_file', 'search_text', 'write_file', 'replace_in_file', 'shell_exec', 'make_directory'];
+  const authorized = ['list_files', 'read_file', 'search_text', 'write_file', 'patch_file', 'replace_in_file', 'shell_exec', 'make_directory', 'todo_write'];
   const calls = [];
 
   let depth = 0;
@@ -241,7 +260,33 @@ function isSecretPath(target) { return /(^|[\\/])\.env(?:\.|$)/i.test(relativeWo
 function truncateOutput(value, limit = MAX_TOOL_OUTPUT) {
   const text = redactSecrets(value);
   if (Buffer.byteLength(text, 'utf8') <= limit) return text;
+  const lines = text.split('\n');
+  if (lines.length > 70) {
+    const head = lines.slice(0, 35).join('\n');
+    const tail = lines.slice(-35).join('\n');
+    const omitted = lines.length - 70;
+    return `${head}\n\n[... ${omitted} linhas omitidas pelo truncamento cirúrgico ...]\n\n${tail}`;
+  }
   return `${Buffer.from(text, 'utf8').subarray(0, limit).toString('utf8')}\n[OUTPUT_TRUNCATED]`;
+}
+
+function loadWorkspaceDirectives(targetFolder = '.') {
+  const candidates = ['SENSIX.md', 'CLAUDE.md', '.sensix/RULES.md', 'AGENTS.md'];
+  try {
+    const resolved = ensureWorkspacePath(targetFolder);
+    for (const candidate of candidates) {
+      const fullPath = path.join(resolved, candidate);
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+        const raw = fs.readFileSync(fullPath, 'utf8');
+        return {
+          found: true,
+          file: candidate,
+          content: raw.slice(0, 4000)
+        };
+      }
+    }
+  } catch {}
+  return { found: false };
 }
 
 function modelToolContent(result) {
@@ -396,13 +441,74 @@ async function makeDirectoryTool(args) {
   return { ok: true, path: relativeWorkspacePath(target), count: 1, message: `Diretório criado: ${relativeWorkspacePath(target)}` };
 }
 
+async function patchFileTool(args) {
+  const target = ensureWorkspacePath(args.path);
+  if (!fs.existsSync(target)) throw new Error(`Arquivo não encontrado para patch: ${relativeWorkspacePath(target)}`);
+  if (isSecretPath(target)) throw new Error('Edição bloqueada em arquivos protegidos.');
+
+  const content = fs.readFileSync(target, 'utf8');
+  const oldString = String(args.old_string || '');
+  const newString = String(args.new_string || '');
+
+  if (!oldString) throw new Error('old_string não pode ser vazia.');
+
+  let count = 0;
+  let pos = content.indexOf(oldString);
+  while (pos !== -1) {
+    count++;
+    pos = content.indexOf(oldString, pos + oldString.length);
+  }
+
+  if (count === 0) {
+    throw new Error(`old_string não foi encontrada em ${relativeWorkspacePath(target)}. Verifique a exata indentação e quebras de linha.`);
+  }
+  if (count > 1) {
+    throw new Error(`old_string ocorre ${count} vezes em ${relativeWorkspacePath(target)}. Inclua mais linhas de contexto antes ou depois para torná-la única.`);
+  }
+
+  const patched = content.replace(oldString, newString);
+  fs.writeFileSync(target, patched, 'utf8');
+  const diffLines = newString.split('\n').length - oldString.split('\n').length;
+  return {
+    ok: true,
+    path: relativeWorkspacePath(target),
+    bytes: Buffer.byteLength(patched, 'utf8'),
+    diffLines,
+    message: `Arquivo ${relativeWorkspacePath(target)} editado cirurgicamente com sucesso.`
+  };
+}
+
+async function todoWriteTool(args, activeRun) {
+  const todos = Array.isArray(args.todos) ? args.todos : [];
+  const normalizedTodos = todos.map((t, idx) => ({
+    id: String(t.id || idx + 1),
+    task: String(t.task || ''),
+    status: ['pending', 'in_progress', 'completed'].includes(t.status) ? t.status : 'pending'
+  }));
+  sendChatEvent({ runId: activeRun.runId, type: 'todo_update', todos: normalizedTodos });
+  const pending = normalizedTodos.filter(t => t.status === 'pending').length;
+  const inProgress = normalizedTodos.filter(t => t.status === 'in_progress').length;
+  const completed = normalizedTodos.filter(t => t.status === 'completed').length;
+  return {
+    ok: true,
+    total: normalizedTodos.length,
+    pending,
+    inProgress,
+    completed,
+    todos: normalizedTodos,
+    summary: `${completed}/${normalizedTodos.length} concluídas (${inProgress} em progresso, ${pending} pendentes)`
+  };
+}
+
 async function executeTool(name, args, activeRun) {
   if (name === 'list_files') return listFilesTool(args);
   if (name === 'make_directory') return makeDirectoryTool(args);
   if (name === 'read_file') return readFileTool(args);
   if (name === 'search_text') return searchTextTool(args, activeRun);
   if (name === 'write_file') return writeFileTool(args);
+  if (name === 'patch_file') return patchFileTool(args);
   if (name === 'replace_in_file') return replaceInFileTool(args);
+  if (name === 'todo_write') return todoWriteTool(args, activeRun);
   if (name === 'shell_exec') return shellExecTool(args, activeRun);
   throw new Error(`Ferramenta não autorizada: ${name}`);
 }
@@ -422,6 +528,8 @@ async function requestAgentCompletion(baseUrl, token, messages, signal, traceId,
 }
 
 function describeTool(name, args) {
+  if (name === 'todo_write') return `Atualizando plano (${args.todos?.length || 0} etapas)`;
+  if (name === 'patch_file') return `Patch cirúrgico em ${args.path}`;
   if (name === 'shell_exec') return `PowerShell: ${truncateOutput(args.command || '', 180)}`;
   if (name === 'make_directory') return `Criando pasta ${args.path}`;
   if (name === 'read_file') return `Lendo ${args.path}`;
@@ -433,6 +541,8 @@ function describeTool(name, args) {
 }
 
 function summarizeTool(name, result) {
+  if (name === 'todo_write') return `Plano atualizado: ${result.summary}`;
+  if (name === 'patch_file') return result.message;
   if (name === 'shell_exec') return `Comando finalizado com código ${result.code}${result.timedOut ? ' (timeout)' : ''}.`;
   if (name === 'make_directory') return `Pasta ${result.path} criada com sucesso.`;
   if (name === 'list_files') return `${result.count} itens encontrados.`;
@@ -468,12 +578,27 @@ async function runAgent(runId, payload) {
   sendChatEvent({ runId, type: 'start', traceId });
   writeAudit('info', 'agent_run_started', { model: payload.model }, traceId);
   try {
-    const { baseUrl, token } = readStoredCredentials();
-    if (!token && !isTokenOptional(baseUrl)) throw new Error('Configure a chave do gateway antes de conversar.');
-    const conversation = [{ role: 'system', content: AGENT_SYSTEM_PROMPT }, ...payload.messages.filter((message) => message && message.role !== 'system')];
+    let systemPrompt = AGENT_SYSTEM_PROMPT;
+    const directives = loadWorkspaceDirectives(payload.projectFolder || '.');
+    if (directives.found) {
+      systemPrompt += `\n\n[DIRETRIZES DO PROJETO CARREGADAS DE ${directives.file}]:\n${directives.content}`;
+      sendChatEvent({ runId, type: 'synthesizing', message: `Diretrizes locais carregadas de ${directives.file}...` });
+    }
+    const conversation = [{ role: 'system', content: systemPrompt }, ...payload.messages.filter((message) => message && message.role !== 'system')];
     const seenToolCalls = new Map();
     let step = 0;
     while (!controller.signal.aborted) {
+      if (conversation.length > 16) {
+        const lastFew = conversation.slice(-6);
+        const intermediate = conversation.slice(1, -6);
+        const toolsUsed = intermediate.filter((m) => m.role === 'tool').map((m) => m.name).filter(Boolean);
+        const compactSummary = {
+          role: 'user',
+          content: `[SÍNTESE DE CONTEXTO AUTO-COMPACTADO]: Foram executadas ${toolsUsed.length} etapas anteriores (${[...new Set(toolsUsed)].join(', ')}). Mantenha o foco nos passos pendentes do plano.`
+        };
+        conversation.splice(1, conversation.length - 1, compactSummary, ...lastFew);
+        sendChatEvent({ runId, type: 'synthesizing', message: 'Contexto compactado automaticamente (auto-compaction Claude Code)...' });
+      }
       if (step > 0) sendChatEvent({ runId, type: 'synthesizing', message: 'Ferramenta concluída. Solicitando o próximo passo ao modelo...' });
       const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, payload.model, { tools: payload.mode === 'plan' ? [] : TOOL_DEFINITIONS });
       const message = completion.choices?.[0]?.message;
@@ -634,6 +759,34 @@ ipcMain.handle('chat:cancel', (_event, runId) => {
   if (activeRun) { activeRun.controller.abort(); activeRun.child?.kill(); }
   return { ok: Boolean(activeRun) };
 });
+ipcMain.handle('project:init-rules', async (_event, folderPath = '.') => {
+  try {
+    const targetDir = ensureWorkspacePath(folderPath);
+    const targetFile = path.join(targetDir, 'SENSIX.md');
+    if (fs.existsSync(targetFile)) return { ok: false, error: 'O arquivo SENSIX.md já existe neste diretório.' };
+    const template = [
+      '# SENSIX.md — Diretrizes Operacionais do Projeto',
+      '',
+      '## Escopo e Stack',
+      `- Projeto: ${path.basename(targetDir)}`,
+      '- Ambiente: AXION Enterprise / SENSIX Agentic Desktop',
+      '',
+      '## Comandos Canônicos',
+      '- Executar testes: npm test / pytest',
+      '- Verificação de sintaxe: node --check / python -m py_compile',
+      '',
+      '## Diretrizes de Execução Agêntica',
+      '1. Edição cirúrgica: priorizar patch_file para modificar código existente.',
+      '2. Autonomia completa: criar arquivos de exemplo e validar saídas no terminal.',
+      '3. Rastreabilidade: registrar mudanças factuais e manter o histórico limpo.',
+      '',
+    ].join('\n');
+    fs.writeFileSync(targetFile, template, 'utf8');
+    return { ok: true, path: relativeWorkspacePath(targetFile) };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('project:get-rules', async (_event, folderPath = '.') => loadWorkspaceDirectives(folderPath));
+
 ipcMain.handle('window:minimize', () => mainWindow?.minimize());
 ipcMain.handle('window:maximize', () => {
   if (!mainWindow) return false;

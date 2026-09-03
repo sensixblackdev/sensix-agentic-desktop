@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('sensix', {
   chooseFiles: () => ipcRenderer.invoke('files:choose'),
   inspectFolder: (folderPath) => ipcRenderer.invoke('folder:inspect', folderPath),
   readFilePreview: (filePath) => ipcRenderer.invoke('file:read-preview', filePath),
+  initProjectRules: (folderPath) => ipcRenderer.invoke('project:init-rules', folderPath),
+  getProjectRules: (folderPath) => ipcRenderer.invoke('project:get-rules', folderPath),
   loadSessions: () => ipcRenderer.invoke('sessions:load'),
   saveSessions: (sessions) => ipcRenderer.invoke('sessions:save', sessions),
   listModels: () => ipcRenderer.invoke('models:list'),

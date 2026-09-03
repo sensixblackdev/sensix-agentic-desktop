@@ -227,6 +227,33 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .attachment-chip .attachment-remove:hover { color: #fca5a5; }
 .composer-form.drag-active { outline: 2px dashed var(--accent); outline-offset: -2px; border-color: var(--accent); }
 
+/* Claude Code Live Checklist / TodoWrite UI */
+.todo-container { margin: 12px 10% 0; background: #121217; border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 14px; box-shadow: 0 4px 16px rgba(0,0,0,.3); transition: all .2s ease; }
+.todo-container.hidden { display: none; }
+.todo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.todo-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text); }
+.todo-title .svg-icon { width: 14px; height: 14px; color: var(--accent); }
+.todo-badge { font-size: 11px; padding: 2px 7px; border-radius: 12px; background: rgba(34, 197, 94, 0.12); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.25); font-family: monospace; font-weight: 700; }
+.todo-toggle-btn { background: transparent; border: 0; color: var(--dim); font-size: 11px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.todo-toggle-btn:hover { color: var(--text); background: rgba(255,255,255,.06); }
+.todo-progress-bar { width: 100%; height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+.todo-progress-fill { height: 100%; background: linear-gradient(90deg, #10b981, #22c55e); transition: width .3s ease; }
+.todo-list { display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
+.todo-list.collapsed { display: none; }
+.todo-item { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 6px; border-radius: 6px; color: var(--muted); transition: background .15s ease; }
+.todo-item:hover { background: rgba(255,255,255,.03); }
+.todo-item .todo-status-icon { width: 14px; height: 14px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.todo-item.pending { color: var(--dim); }
+.todo-item.pending .todo-status-icon { border: 1.5px solid var(--dim); border-radius: 50%; width: 11px; height: 11px; }
+.todo-item.in_progress { color: var(--text); font-weight: 500; background: rgba(255,255,255,.04); }
+.todo-item.in_progress .todo-status-icon { border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; width: 12px; height: 12px; animation: spin 1s linear infinite; }
+.todo-item.completed { color: #86efac; text-decoration: line-through var(--dim); }
+.todo-item.completed .todo-status-icon { color: #22c55e; }
+.todo-item .todo-task { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+
 @media (max-width: 1100px) {
   html, body { min-width: 860px; }
   .app-layout { grid-template-columns: 215px minmax(0, 1fr); }

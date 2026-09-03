@@ -36,9 +36,12 @@
     projectModal: document.getElementById('project-modal'), projectForm: document.getElementById('project-form'), projectName: document.getElementById('project-name-input'), projectFolder: document.getElementById('project-folder-input'), projectState: document.getElementById('project-state'),
     runModeSelect: document.getElementById('run-mode-select'),
     actionModeSelect: document.getElementById('action-mode-select'),
-    chatContext: document.getElementById('chat-context'),
     runModeButton: document.getElementById('run-mode-button'), runModeLabel: document.getElementById('run-mode-label'),
     actionModeButton: document.getElementById('action-mode-button'), actionModeLabel: document.getElementById('action-mode-label'),
+    todoContainer: document.getElementById('todo-container'),
+    todoBadge: document.getElementById('todo-badge'),
+    todoList: document.getElementById('todo-list'),
+    todoProgressFill: document.getElementById('todo-progress-fill'),
   };
   const icons = {
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -148,6 +151,35 @@
       : '<option value="">Nenhum modelo carregado</option>';
     if (currentSession && selected) currentSession.model = selected;
   }
+
+  function renderTodos(todos) {
+    if (!els.todoContainer) return;
+    if (!Array.isArray(todos) || todos.length === 0) {
+      els.todoContainer.classList.add('hidden');
+      return;
+    }
+    els.todoContainer.classList.remove('hidden');
+    const total = todos.length;
+    const completed = todos.filter((t) => t.status === 'completed').length;
+    const inProgress = todos.filter((t) => t.status === 'in_progress').length;
+    const percent = Math.round((completed / total) * 100);
+    if (els.todoBadge) els.todoBadge.textContent = `${completed}/${total} (${percent}%)`;
+    if (els.todoProgressFill) els.todoProgressFill.style.width = `${percent}%`;
+
+    if (els.todoList) {
+      els.todoList.innerHTML = todos.map((t) => {
+        const isDone = t.status === 'completed';
+        const isRunning = t.status === 'in_progress';
+        const statusClass = isDone ? 'completed' : (isRunning ? 'in_progress' : 'pending');
+        const icon = isDone ? '✓' : (isRunning ? '' : '');
+        return `<div class="todo-item ${statusClass}">
+          <span class="todo-status-icon">${icon}</span>
+          <span class="todo-task">${escapeHtml(t.task)}</span>
+        </div>`;
+      }).join('');
+    }
+  }
+
   function renderMarkdown(text) {
     const lines = String(text || '').split(/\r?\n/);
     const output = [];
@@ -347,6 +379,7 @@
     renderSessions();
     renderModelOptions();
     renderMessages();
+    renderTodos(session.todos || []);
     updateEphemeralToggle();
   }
   function newSession() {
@@ -422,6 +455,81 @@
     if (isSending) { if (activeRunId) await window.sensix.cancelChat(activeRunId); return; }
     const content = els.composerInput.value.trim();
     if (!content && attachments.length === 0) return;
+
+    if (content.startsWith('/')) {
+      const parts = content.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+      els.composerInput.value = '';
+      autoResize();
+
+      const session = currentOrNewSession();
+      if (cmd === '/clear') {
+        session.messages = [];
+        session.todos = [];
+        renderTodos([]);
+        persistSessions();
+        renderMessages();
+        setRunStatus('Chat limpo.');
+        return;
+      }
+      if (cmd === '/todo') {
+        if (els.todoContainer) {
+          els.todoContainer.classList.toggle('hidden');
+          setRunStatus(els.todoContainer.classList.contains('hidden') ? 'Checklist oculto.' : 'Checklist visível.');
+        }
+        return;
+      }
+      if (cmd === '/compact') {
+        if (session.messages.length > 4) {
+          const lastFew = session.messages.slice(-2);
+          session.messages = [
+            { id: 'compact-note', role: 'assistant', content: `🧹 **Sessão Compactada (Claude Code)**: ${session.messages.length - 2} mensagens anteriores arquivadas. Contexto limpo mantido.` },
+            ...lastFew
+          ];
+          persistSessions();
+          renderMessages();
+          setRunStatus('Contexto da sessão compactado com sucesso.');
+        } else {
+          setRunStatus('Poucas mensagens para compactar.');
+        }
+        return;
+      }
+      if (cmd === '/init') {
+        try {
+          const res = await window.sensix.initProjectRules(session.projectFolder || '.');
+          session.messages.push({
+            id: `msg-${Date.now()}`,
+            role: 'assistant',
+            content: res.ok
+              ? `📄 **Arquivo de Diretrizes Criado com Sucesso**: \`${res.path}\`\n\nO agente lerá este arquivo automaticamente em todas as tarefas deste workspace.`
+              : `⚠️ ${res.error}`
+          });
+        } catch (e) {
+          session.messages.push({ id: `msg-${Date.now()}`, role: 'assistant', content: `Erro ao criar regras: ${e.message}` });
+        }
+        persistSessions();
+        renderMessages();
+        return;
+      }
+      if (cmd === '/rules') {
+        try {
+          const rules = await window.sensix.getProjectRules(session.projectFolder || '.');
+          session.messages.push({
+            id: `msg-${Date.now()}`,
+            role: 'assistant',
+            content: rules && rules.found
+              ? `📋 **Diretrizes Ativas (\`${rules.file}\`):**\n\n\`\`\`markdown\n${rules.content}\n\`\`\``
+              : `ℹ️ Nenhuma diretriz encontrada na raiz (\`SENSIX.md\`, \`CLAUDE.md\`, \`AGENTS.md\`). Digite \`/init\` para gerar uma!`
+          });
+        } catch (e) {
+          session.messages.push({ id: `msg-${Date.now()}`, role: 'assistant', content: `Erro ao buscar regras: ${e.message}` });
+        }
+        persistSessions();
+        renderMessages();
+        return;
+      }
+    }
+
     if (!settings.configured) { showSettings(); return; }
     const model = els.modelSelect.value || currentSession?.model;
     if (!model) { setRunStatus('Carregue um modelo antes de enviar.'); return; }
@@ -499,6 +607,11 @@
       persistSessions();
       renderMessages();
     }
+    if (event.type === 'todo_update') {
+      session.todos = event.todos;
+      renderTodos(event.todos);
+      persistSessions();
+    }
     if (event.type === 'synthesizing') setRunStatus(event.message || 'Sintetizando resultado...');
     if (event.type === 'token') { assistant.content += event.content || ''; persistSessions(); renderMessages(); }
     if (event.type === 'usage') setRunStatus('Resposta concluída · uso registrado pelo gateway');
@@ -512,6 +625,12 @@
     const target = event.target.closest('[data-action]');
     if (!target) return;
     const action = target.dataset.action;
+    if (action === 'toggle-todo-list') {
+      if (els.todoList) {
+        els.todoList.classList.toggle('collapsed');
+        target.textContent = els.todoList.classList.contains('collapsed') ? 'Expandir' : 'Ocultar';
+      }
+    }
     if (action === 'new-session') newSession();
     if (action === 'open-settings') showSettings();
     if (action === 'close-settings') hideSettings();

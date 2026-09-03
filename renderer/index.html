@@ -48,6 +48,20 @@
               <button class="icon-button" type="button" data-action="refresh-models" aria-label="Atualizar modelos" title="Atualizar modelos"><span class="svg-icon" data-icon="refresh" aria-hidden="true"></span></button>
             </div>
           </header>
+          <div id="todo-container" class="todo-container hidden">
+            <div class="todo-header">
+              <div class="todo-title">
+                <span class="svg-icon" data-icon="spark" aria-hidden="true"></span>
+                <strong>Checklist Ativo</strong>
+                <span id="todo-badge" class="todo-badge">0/0</span>
+              </div>
+              <div class="todo-actions">
+                <button type="button" class="todo-toggle-btn" data-action="toggle-todo-list" title="Recolher / expandir tarefas">Ocultar</button>
+              </div>
+            </div>
+            <div class="todo-progress-bar"><div id="todo-progress-fill" class="todo-progress-fill" style="width: 0%"></div></div>
+            <div id="todo-list" class="todo-list"></div>
+          </div>
 
           <section id="chat-scroll" class="chat-scroll" aria-live="polite">
             <div id="empty-state" class="empty-state">
