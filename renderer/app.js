@@ -2,7 +2,7 @@
   'use strict';
 
   const SESSION_KEY = 'sensix-agentic-sessions-v1';
-  const SYSTEM_PROMPT = 'Você é um agente de coding AXION com tools reais. Use shell e arquivos quando necessário e reporte apenas resultados verificados.';
+  const SYSTEM_PROMPT = 'Você é o agente autônomo de software SENSIX (AXION). Execute ferramentas de ponta a ponta sem procrastinar em texto. Se precisar inspecionar, listar, criar ou editar arquivos, invoque as ferramentas na mesma resposta.';
   const els = {
     sessionList: document.getElementById('session-list'),
     modelSelect: document.getElementById('model-select'),
@@ -11,6 +11,7 @@
     chatScroll: document.getElementById('chat-scroll'),
     composerForm: document.getElementById('composer-form'),
     composerInput: document.getElementById('composer-input'),
+    attachmentsBar: document.getElementById('attachments-bar'),
     sendButton: document.getElementById('send-button'),
     runStatus: document.getElementById('run-status'),
     statusDot: document.getElementById('status-dot'),
@@ -52,6 +53,10 @@
     archive: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M3 4h18v3H3zM9 11h6"/></svg>',
     trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M8 7l1-3h6l1 3M7 7l1 14h8l1-14"/></svg>',
     shield: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-2.9 8.1-7 10-4.1-1.9-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>',
+    folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2z"/></svg>',
+    paperclip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>',
+    file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>',
+    image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
   };
 
   let settings = { baseUrl: '', configured: false, encryptionAvailable: false };
@@ -63,6 +68,7 @@
   let removeChatListener = null;
   let showArchived = false;
   let pendingDeleteId = null;
+  let attachments = [];
   let steerInstruction = '';
   let projects = JSON.parse(localStorage.getItem('sensix-projects-v1') || '[]');
   let runMode = 'normal';
@@ -174,9 +180,17 @@
       const stepsMarkup = steps.length
         ? `<div class="tool-timeline ${collapsed ? 'collapsed' : ''}"><button class="tool-timeline-toggle" type="button" data-action="toggle-tool-timeline" data-message-id="${escapeHtml(messageId)}" aria-expanded="${String(!collapsed)}"><span>${collapsed ? 'Mostrar' : 'Ocultar'} etapas · ${steps.length}</span><span class="svg-icon" data-icon="arrowDown" aria-hidden="true"></span></button><div class="tool-timeline-body">${steps.map((step) => `<div class="tool-step ${escapeHtml(step.status || 'running')}"><span class="tool-step-state" aria-hidden="true"></span><div><strong>${escapeHtml(step.tool || 'tool')}</strong><small>${escapeHtml(step.summary || step.description || 'Executando...')}</small></div></div>`).join('')}</div></div>`
         : '';
+      const attachmentsMarkup = Array.isArray(message.attachments) && message.attachments.length > 0
+        ? `<div class="attachments-bar" style="padding:0 0 8px;">${message.attachments.map((att) => {
+            const iconName = att.type === 'folder' ? 'folder' : att.isImage ? 'image' : 'file';
+            const badge = att.count ? `${att.count} itens` : att.size ? `${Math.round(att.size / 1024)} KB` : '';
+            return `<div class="attachment-chip"><span class="svg-icon" data-icon="${iconName}">${icons[iconName] || icons.file}</span><span class="attachment-name">${escapeHtml(att.name || att.path)}</span>${badge ? `<span class="attachment-badge">${escapeHtml(badge)}</span>` : ''}</div>`;
+          }).join('')}</div>`
+        : '';
       const needsAnswer = message.role === 'assistant' && /\?\s*$/.test(String(message.content || '').trim());
       const isPlan = message.role === 'assistant' && /(^|\n)#{1,3}\s*(plano|plan|etapas)/i.test(String(message.content || ''));
-      return `<article class="message ${message.role === 'user' ? 'user' : 'assistant'} ${needsAnswer ? 'question-card' : ''} ${isPlan ? 'plan-card' : ''}" data-message-id="${escapeHtml(messageId)}"><div class="message-avatar" aria-hidden="true">${message.role === 'user' ? 'U' : 'S'}</div><div><div class="message-meta">${message.role === 'user' ? 'Você' : needsAnswer ? 'SENSIX Agent · precisa da sua decisão' : isPlan ? 'SENSIX Agent · plano' : 'SENSIX Agent'}</div>${stepsMarkup}<div class="message-body">${renderMarkdown(message.content)}</div></div></article>`;
+      const displayBody = message.displayContent || message.content;
+      return `<article class="message ${message.role === 'user' ? 'user' : 'assistant'} ${needsAnswer ? 'question-card' : ''} ${isPlan ? 'plan-card' : ''}" data-message-id="${escapeHtml(messageId)}"><div class="message-avatar" aria-hidden="true">${message.role === 'user' ? 'U' : 'S'}</div><div><div class="message-meta">${message.role === 'user' ? 'Você' : needsAnswer ? 'SENSIX Agent · precisa da sua decisão' : isPlan ? 'SENSIX Agent · plano' : 'SENSIX Agent'}</div>${attachmentsMarkup}${stepsMarkup}<div class="message-body">${renderMarkdown(displayBody)}</div></div></article>`;
     }).join('');
     requestAnimationFrame(() => { if (wasNearBottom || isSending) els.chatScroll.scrollTop = els.chatScroll.scrollHeight; updateScrollAffordance(); });
   }
@@ -337,25 +351,107 @@
     els.composerInput.focus();
   }
   function useSuggestion(prompt) { els.composerInput.value = prompt; autoResize(); els.composerInput.focus(); }
+
+  function renderAttachments() {
+    if (!els.attachmentsBar) return;
+    const hasItems = attachments.length > 0;
+    els.attachmentsBar.classList.toggle('hidden', !hasItems);
+    els.attachmentsBar.innerHTML = attachments.map((item, idx) => {
+      const iconName = item.type === 'folder' ? 'folder' : item.isImage ? 'image' : 'file';
+      const badge = item.count ? `${item.count} itens` : item.size ? `${Math.round(item.size / 1024)} KB` : '';
+      return `<div class="attachment-chip" title="${escapeHtml(item.path)}">
+        <span class="svg-icon" data-icon="${iconName}">${icons[iconName] || icons.file}</span>
+        <span class="attachment-name">${escapeHtml(item.name || item.path)}</span>
+        ${badge ? `<span class="attachment-badge">${escapeHtml(badge)}</span>` : ''}
+        <button type="button" class="attachment-remove" data-action="remove-attachment" data-index="${idx}" aria-label="Remover anexo">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  async function attachFolder() {
+    try {
+      const folderPath = await window.sensix.chooseFolder();
+      if (!folderPath) return;
+      const info = await window.sensix.inspectFolder(folderPath);
+      if (!info.ok) { setRunStatus(`Não foi possível ler a pasta: ${info.error}`); return; }
+      const name = folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+      attachments.push({ type: 'folder', name, path: folderPath, count: info.count, items: info.items });
+      renderAttachments();
+      setRunStatus(`Pasta anexada: ${name} (${info.count} itens)`);
+    } catch (err) {
+      setRunStatus(`Erro ao anexar pasta: ${err.message}`);
+    }
+  }
+
+  async function attachFiles() {
+    try {
+      const filePaths = await window.sensix.chooseFiles();
+      if (!filePaths || !filePaths.length) return;
+      for (const filePath of filePaths) {
+        const preview = await window.sensix.readFilePreview(filePath);
+        if (preview.ok) {
+          attachments.push({
+            type: 'file',
+            name: preview.name,
+            path: filePath,
+            size: preview.size,
+            isImage: preview.isImage,
+            base64: preview.base64,
+            content: preview.content
+          });
+        }
+      }
+      renderAttachments();
+      setRunStatus(`${filePaths.length} arquivo(s) anexado(s).`);
+    } catch (err) {
+      setRunStatus(`Erro ao anexar arquivos: ${err.message}`);
+    }
+  }
+
   async function sendMessage() {
     if (isSending) { if (activeRunId) await window.sensix.cancelChat(activeRunId); return; }
     const content = els.composerInput.value.trim();
-    if (!content) return;
+    if (!content && attachments.length === 0) return;
     if (!settings.configured) { showSettings(); return; }
     const model = els.modelSelect.value || currentSession?.model;
     if (!model) { setRunStatus('Carregue um modelo antes de enviar.'); return; }
     const session = currentOrNewSession();
     session.model = model;
+
+    const currentAttachments = [...attachments];
+    let fullContent = content || 'Analise os anexos fornecidos.';
+    if (currentAttachments.length > 0) {
+      const parts = ['[CONTEXTO DE ANEXOS FORNECIDOS PELO USUÁRIO]:'];
+      for (const att of currentAttachments) {
+        if (att.type === 'folder') {
+          const filesSummary = att.items ? att.items.slice(0, 40).map((i) => `  - ${i.name} (${i.type}${i.size ? `, ${i.size}B` : ''})`).join('\n') : '';
+          parts.push(`PASTA: "${att.path}" (${att.count} itens encontrados)\nArquivos identificados:\n${filesSummary}`);
+        } else if (att.type === 'file') {
+          if (att.isImage) parts.push(`IMAGEM: "${att.path}" (${att.size} bytes)`);
+          else parts.push(`ARQUIVO: "${att.path}" (${att.size} bytes)\nConteúdo:\n${att.content}`);
+        }
+      }
+      if (content) parts.push(`INSTRUÇÃO DO USUÁRIO:\n${content}`);
+      fullContent = parts.join('\n\n');
+    }
+
     const steer = steerInstruction ? `\n\nSTEER DO USUÁRIO (aplicar neste turno): ${steerInstruction}` : '';
     const modeInstruction = runMode === 'plan' ? '\nMODO PLAN: não execute ferramentas; produza um plano com etapas, riscos e perguntas de confirmação.' : runMode === 'driven' ? '\nMODO DRIVEN CODE: execute o trabalho incrementalmente; quando houver ambiguidade ou risco, pare e faça uma pergunta objetiva antes de continuar.' : '';
-    const requestMessages = [{ role: 'system', content: SYSTEM_PROMPT + modeInstruction + steer }, ...session.messages.map(({ role, content: text }) => ({ role, content: text })), { role: 'user', content }];
+    const requestMessages = [{ role: 'system', content: SYSTEM_PROMPT + modeInstruction + steer }, ...session.messages.map(({ role, content: text }) => ({ role, content: text })), { role: 'user', content: fullContent }];
     steerInstruction = '';
     els.steerInput.value = '';
     els.steerPanel.classList.add('hidden');
-    session.messages.push({ role: 'user', content }, { id: crypto.randomUUID(), role: 'assistant', content: '', steps: [] });
-    if (session.title === 'Nova sessão') session.title = content.slice(0, 42) + (content.length > 42 ? '…' : '');
+    session.messages.push({
+      role: 'user',
+      content: fullContent,
+      displayContent: content || (currentAttachments.length ? `[${currentAttachments.length} anexo(s)]` : ''),
+      attachments: currentAttachments
+    }, { id: crypto.randomUUID(), role: 'assistant', content: '', steps: [] });
+    if (session.title === 'Nova sessão') session.title = (content || 'Análise de arquivos').slice(0, 42) + (content.length > 42 ? '…' : '');
     session.updatedAt = Date.now();
     els.composerInput.value = '';
+    attachments = [];
+    renderAttachments();
     autoResize();
     persistSessions();
     renderSessions();
@@ -433,10 +529,56 @@
     }
     if (action === 'choose-mode') { runMode = target.dataset.mode || 'normal'; els.runModeSelect.value = runMode; syncModeControls(); closePopovers(); }
     if (action === 'choose-action-mode') { const value = target.dataset.mode === 'full-access' ? 'full-access' : 'normal'; els.actionModeSelect.value = value; localStorage.setItem('sensix-action-mode', value === 'full-access' ? 'full-access' : 'guarded'); syncModeControls(); closePopovers(); }
-    if (action === 'suggestion') useSuggestion(target.dataset.prompt || '');
+    if (action === 'attach-folder') await attachFolder();
+    if (action === 'attach-file') await attachFiles();
+    if (action === 'remove-attachment') {
+      const idx = parseInt(target.dataset.index, 10);
+      if (!isNaN(idx)) { attachments.splice(idx, 1); renderAttachments(); }
+    }
     if (action === 'window-minimize') window.sensix.window.minimize();
     if (action === 'window-maximize') window.sensix.window.maximize();
     if (action === 'window-close') window.sensix.window.close();
+  });
+
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    els.composerForm.classList.add('drag-active');
+  });
+  window.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget === null || e.clientX === 0 || e.clientY === 0) {
+      els.composerForm.classList.remove('drag-active');
+    }
+  });
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    els.composerForm.classList.remove('drag-active');
+    const files = e.dataTransfer?.files;
+    if (!files || !files.length) return;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const itemPath = f.path;
+      if (!itemPath) continue;
+      const folderInfo = await window.sensix.inspectFolder(itemPath);
+      if (folderInfo && folderInfo.ok) {
+        const name = itemPath.split(/[\\/]/).filter(Boolean).pop() || itemPath;
+        attachments.push({ type: 'folder', name, path: itemPath, count: folderInfo.count, items: folderInfo.items });
+      } else {
+        const fileInfo = await window.sensix.readFilePreview(itemPath);
+        if (fileInfo && fileInfo.ok) {
+          attachments.push({
+            type: 'file',
+            name: fileInfo.name,
+            path: itemPath,
+            size: fileInfo.size,
+            isImage: fileInfo.isImage,
+            base64: fileInfo.base64,
+            content: fileInfo.content
+          });
+        }
+      }
+    }
+    renderAttachments();
+    setRunStatus(`${files.length} item(ns) anexado(s) via arrastar e soltar.`);
   });
   els.settingsForm.addEventListener('submit', saveSettings);
   els.composerForm.addEventListener('submit', (event) => { event.preventDefault(); sendMessage(); });

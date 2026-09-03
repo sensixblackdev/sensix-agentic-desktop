@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.2",
-  "description": "SENSIX Agentic Desktop — Gateway multi-tier com normalização automática de tools, shell e coding",
+  "version": "0.3.3",
+  "description": "SENSIX Agentic Desktop — Gateway multi-tier com autonomia total, anexos de pastas/arquivos e ReAct anti-procrastinação",
   "main": "main.cjs",
   "private": true,
   "scripts": {

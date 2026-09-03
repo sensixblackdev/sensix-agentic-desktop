@@ -17,20 +17,24 @@ const activeRuns = new Map();
 let mainWindow = null;
 
 const AGENT_SYSTEM_PROMPT = [
-  'Você é o agente de engenharia SENSIX/AXION executando dentro de um app Electron.',
-  'Use ferramentas reais para inspecionar, editar, pesquisar e validar código quando a solicitação exigir ação.',
-  'O workspace autorizado é D:\\WORKSPACE. Arquivos .env podem ser usados apenas como configuração local: nunca leia, exiba ou envie seus valores ao gateway; execute comandos localmente e reporte somente o resultado não sensível.',
-  'Antes de editar, leia os arquivos relevantes. Depois de editar, valide com comandos proporcionais ao risco.',
-  'Após obter evidência suficiente, entregue a síntese final. Não repita a mesma ferramenta com os mesmos argumentos; trate resultado vazio, falha ou ausência de progresso como sinal para mudar de abordagem ou relatar o bloqueio.',
-  'Não invente saídas de ferramentas. Não exponha tags XML, JSON bruto de tool calls, raciocínio interno ou segredos.',
-  'Ações destrutivas, deleções recursivas, formatação de disco, reset hard e comandos de energia são proibidos.',
-  'Entregue uma síntese curta em Markdown com arquivos alterados e evidências factuais.',
+  'Você é o agente autônomo de engenharia de software SENSIX (AXION Enterprise) operando no workspace D:\\WORKSPACE.',
+  'DIRETRIZES DE EXECUÇÃO AGÊNTICA INDUSTRIAL:',
+  '1. ZERO PROCRASTINAÇÃO E AÇÃO IMEDIATA: NUNCA responda apenas dizendo que "vai fazer", "aguarde um momento" ou pedindo confirmações óbvias. Se você pretende ler, listar, criar ou editar arquivos, INVOQUE A FERRAMENTA NA MESMA RESPOSTA! Dizer em texto que vai fazer algo sem emitir tool_call é estritamente proibido.',
+  '2. AUTONOMIA E PROATIVIDADE COMPLETA: Quando o usuário pedir para criar um projeto, validador ou módulo (ex: card-validator), execute o trabalho completo. Crie a estrutura de diretórios, escreva o código funcional com regras reais, crie os arquivos de teste/dados de exemplo e execute a validação no terminal.',
+  '3. CRIAÇÃO DE PASTAS E ARQUIVOS: Se uma pasta não existir, CRIE-A imediatamente com make_directory ou write_file. NUNCA peça para o usuário "criar a pasta" no Windows!',
+  '4. VERIFICAÇÃO FACTUAL: Sempre inspecione os arquivos reais usando list_files e read_file antes de afirmar se existem ou o que contêm.',
+  '5. MULTI-PASS REACT LOOP: Continue encadeando ferramentas passo a passo de forma contínua até concluir o trabalho por completo. Só finalize quando tudo estiver implementado e funcional.',
+  '6. FORMATO DE SAÍDA: Entregue a síntese final em Markdown conciso e técnico, documentando arquivos criados e como executá-los.',
+  'Workspace autorizado: D:\\WORKSPACE. Comandos destrutivos e acesso a segredos/Vault são bloqueados pelos guardrails.',
 ].join(' ');
 
 const TOOL_DEFINITIONS = [
   tool('list_files', 'Lista arquivos e diretórios dentro do workspace autorizado.', {
     path: { type: 'string', description: 'Caminho relativo a D:\\WORKSPACE. Use . para a raiz.' },
     max_results: { type: 'integer', minimum: 1, maximum: 500 },
+  }, ['path']),
+  tool('make_directory', 'Cria um novo diretório dentro do workspace autorizado D:\\WORKSPACE.', {
+    path: { type: 'string', description: 'Caminho do diretório relativo a D:\\WORKSPACE.' },
   }, ['path']),
   tool('read_file', 'Lê um arquivo de texto do workspace, opcionalmente por intervalo de linhas.', {
     path: { type: 'string' },
@@ -144,7 +148,7 @@ function extractToolCallsFromContent(content) {
   if (trimmed.startsWith('```json') && trimmed.endsWith('```')) trimmed = trimmed.slice(7, -3).trim();
   else if (trimmed.startsWith('```') && trimmed.endsWith('```')) trimmed = trimmed.slice(3, -3).trim();
 
-  const authorized = ['list_files', 'read_file', 'search_text', 'write_file', 'replace_in_file', 'shell_exec'];
+  const authorized = ['list_files', 'read_file', 'search_text', 'write_file', 'replace_in_file', 'shell_exec', 'make_directory'];
   try {
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       const parsed = JSON.parse(trimmed);
@@ -363,8 +367,15 @@ async function shellExecTool(args, activeRun) {
     : { ok: result.code === 0 && !result.timedOut, cwd: relativeWorkspacePath(cwd), ...result };
 }
 
+async function makeDirectoryTool(args) {
+  const target = ensureWorkspacePath(args.path);
+  fs.mkdirSync(target, { recursive: true });
+  return { ok: true, path: relativeWorkspacePath(target), count: 1, message: `Diretório criado: ${relativeWorkspacePath(target)}` };
+}
+
 async function executeTool(name, args, activeRun) {
   if (name === 'list_files') return listFilesTool(args);
+  if (name === 'make_directory') return makeDirectoryTool(args);
   if (name === 'read_file') return readFileTool(args);
   if (name === 'search_text') return searchTextTool(args, activeRun);
   if (name === 'write_file') return writeFileTool(args);
@@ -389,6 +400,7 @@ async function requestAgentCompletion(baseUrl, token, messages, signal, traceId,
 
 function describeTool(name, args) {
   if (name === 'shell_exec') return `PowerShell: ${truncateOutput(args.command || '', 180)}`;
+  if (name === 'make_directory') return `Criando pasta ${args.path}`;
   if (name === 'read_file') return `Lendo ${args.path}`;
   if (name === 'write_file') return `Gravando ${args.path}`;
   if (name === 'replace_in_file') return `Editando ${args.path}`;
@@ -399,6 +411,7 @@ function describeTool(name, args) {
 
 function summarizeTool(name, result) {
   if (name === 'shell_exec') return `Comando finalizado com código ${result.code}${result.timedOut ? ' (timeout)' : ''}.`;
+  if (name === 'make_directory') return `Pasta ${result.path} criada com sucesso.`;
   if (name === 'list_files') return `${result.count} itens encontrados.`;
   if (name === 'search_text') return `${result.count} ocorrências encontradas.`;
   if (name === 'read_file') return `Linhas ${result.startLine}-${result.endLine} lidas.`;
@@ -452,6 +465,23 @@ async function runAgent(runId, payload) {
         }
       }
       if (toolCalls.length === 0) {
+        const textContent = String(message.content || '').trim();
+        const isProcrastinating = payload.mode !== 'plan' && step < 4 && (
+          /\b(?:vou (?:ler|listar|criar|executar|verificar|fazer|inspecionar)|aguarde(?: um momento)?|estou listando|estou lendo|aguardo|me informe o caminho|por favor(?:,| ) forneça|forneça o conteúdo|compartilhe o conteúdo)\b/i.test(textContent) ||
+          (step === 0 && /\b(?:entendido|claro|com certeza|vou começar|vou criar)\b/i.test(textContent) && textContent.length < 320 && !textContent.includes('```'))
+        );
+        if (isProcrastinating) {
+          writeAudit('warn', 'agent_procrastination_prevented', { step, textContent }, traceId);
+          sendChatEvent({ runId, type: 'synthesizing', message: 'Executando ferramentas do workspace de forma autônoma...' });
+          conversation.push({ role: 'assistant', content: message.content });
+          conversation.push({
+            role: 'user',
+            content: 'DIRETRIZ DE EXECUÇÃO: Não responda apenas prometendo em texto ou pedindo dados triviais. Execute agora as ferramentas necessárias (list_files, read_file, make_directory, write_file ou shell_exec) para inspecionar, criar os arquivos e validar a tarefa imediatamente.'
+          });
+          step += 1;
+          continue;
+        }
+
         sendChatEvent({ runId, type: 'synthesizing', message: 'Sintetizando resultado verificado...' });
         sendChatEvent({ runId, type: 'token', content: redactSecrets(message.content || 'Execução concluída sem texto de resposta.') });
         if (completion.usage) sendChatEvent({ runId, type: 'usage', usage: completion.usage });
@@ -525,6 +555,46 @@ ipcMain.handle('settings:save', (_event, settings) => {
 });
 ipcMain.handle('settings:clear', () => { try { fs.rmSync(credentialsPath(), { force: true }); } catch {} return publicSettings(); });
 ipcMain.handle('folder:choose', async () => { const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] }); return result.canceled ? null : result.filePaths[0]; });
+ipcMain.handle('files:choose', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Anexar arquivos ou mídias ao chat',
+    properties: ['openFile', 'multiSelections']
+  });
+  return result.canceled ? [] : result.filePaths;
+});
+ipcMain.handle('folder:inspect', async (_event, folderPath) => {
+  try {
+    if (!fs.existsSync(folderPath)) return { ok: false, error: 'Pasta não encontrada.' };
+    const stats = fs.statSync(folderPath);
+    if (!stats.isDirectory()) return { ok: false, error: 'O caminho não é um diretório.' };
+    const items = fs.readdirSync(folderPath, { withFileTypes: true });
+    const tree = items.slice(0, 100).map((item) => ({
+      name: item.name,
+      type: item.isDirectory() ? 'directory' : 'file',
+      size: item.isFile() ? fs.statSync(path.join(folderPath, item.name)).size : undefined
+    }));
+    return { ok: true, path: folderPath, count: items.length, items: tree };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('file:read-preview', async (_event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return { ok: false, error: 'Arquivo não encontrado.' };
+    const ext = path.extname(filePath).toLowerCase();
+    const stats = fs.statSync(filePath);
+    const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(ext);
+    if (isImage) {
+      if (stats.size > 10 * 1024 * 1024) return { ok: false, error: 'Imagem muito grande (>10MB).' };
+      const base64 = fs.readFileSync(filePath).toString('base64');
+      return { ok: true, path: filePath, name: path.basename(filePath), isImage: true, mimeType: `image/${ext.slice(1)}`, base64, size: stats.size };
+    }
+    if (stats.size > 250 * 1024) {
+      const content = fs.readFileSync(filePath, 'utf8').split('\n').slice(0, 100).join('\n');
+      return { ok: true, path: filePath, name: path.basename(filePath), isText: true, content: `${content}\n... [restante truncado]`, size: stats.size };
+    }
+    const content = fs.readFileSync(filePath, 'utf8');
+    return { ok: true, path: filePath, name: path.basename(filePath), isText: true, content, size: stats.size };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
 ipcMain.handle('sessions:load', () => { try { const file = sessionsPath(); if (!fs.existsSync(file)) return []; const parsed = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(parsed) ? parsed : []; } catch { return []; } });
 ipcMain.handle('sessions:save', (_event, sessions) => { if (!Array.isArray(sessions)) throw new Error('Histórico inválido.'); const file = sessionsPath(); const temporary = `${file}.${crypto.randomUUID()}.tmp`; fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(temporary, JSON.stringify(sessions.slice(0, 30)), { encoding: 'utf8', mode: 0o600 }); fs.renameSync(temporary, file); return { ok: true }; });
 ipcMain.handle('models:list', () => fetchModels());
