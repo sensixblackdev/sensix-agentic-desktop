@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.6",
-  "description": "SENSIX Agentic Desktop — Claude Code architecture: TodoWrite live tracker, surgical patch_file, auto-discovery SENSIX.md & slash commands",
+  "version": "0.3.7",
+  "description": "SENSIX Agentic Desktop — Fix baseUrl scoping, Claude Code architecture & uncensored coding models",
   "main": "main.cjs",
   "private": true,
   "scripts": {

@@ -578,6 +578,8 @@ async function runAgent(runId, payload) {
   sendChatEvent({ runId, type: 'start', traceId });
   writeAudit('info', 'agent_run_started', { model: payload.model }, traceId);
   try {
+    const { baseUrl, token } = readStoredCredentials();
+    if (!token && !isTokenOptional(baseUrl)) throw new Error('Configure a chave do gateway antes de conversar.');
     let systemPrompt = AGENT_SYSTEM_PROMPT;
     const directives = loadWorkspaceDirectives(payload.projectFolder || '.');
     if (directives.found) {
