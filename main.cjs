@@ -6,6 +6,7 @@ const { spawn } = require('node:child_process');
 
 const DEFAULT_BASE_URL = process.env.SENSIX_API_BASE_URL || 'https://api.sensix.it.com/v1';
 const LEGACY_BASE_URL = 'http://174.78.228.101:40746/v1';
+const SENSIX_GATEWAY_HOSTS = ['api.sensix.it.com', 'sensix.it.com'];
 const WORKSPACE_ROOT = path.resolve(process.env.SENSIX_WORKSPACE_ROOT || 'D:\\WORKSPACE');
 const MAX_TOOL_OUTPUT = 24 * 1024;
 const MAX_MODEL_TOOL_OUTPUT = 3 * 1024;
@@ -89,7 +90,7 @@ function writeAudit(level, message, details = {}, traceId = crypto.randomUUID())
 function isTokenOptional(baseUrl) {
   try {
     const parsed = new URL(baseUrl);
-    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || SENSIX_GATEWAY_HOSTS.includes(parsed.hostname);
   } catch { return false; }
 }
 

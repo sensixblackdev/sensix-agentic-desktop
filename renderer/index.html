@@ -53,7 +53,7 @@
             <div id="empty-state" class="empty-state">
               <div class="empty-icon"><span class="svg-icon" data-icon="spark" aria-hidden="true"></span></div>
               <h2>Um espaço para pensar e executar</h2>
-              <p>Descreva o objetivo. Escolha GPT-OSS 120B para código e tools, ou Qwen3 32B para respostas ágeis; ambos usam GPU RunPod serverless.</p>
+               <p>Descreva o objetivo. Escolha o modelo Qwen Coder local (inferência gratuita offline) ou Claude/Gemma/DeepSeek via OpenRouter; todos roteados pelo gateway SENSIX.</p>
               <div class="prompt-suggestions" role="list">
                 <button type="button" data-action="suggestion" data-prompt="Inspecione o projeto atual, identifique o stack e mostre os arquivos principais.">Inspecionar workspace</button>
                 <button type="button" data-action="suggestion" data-prompt="Revise o código deste projeto, encontre inconsistências e proponha correções verificáveis.">Revisar código</button>
@@ -78,12 +78,12 @@
 
     <div id="settings-modal" class="modal-backdrop hidden" role="presentation">
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <div class="modal-header"><div><span class="eyebrow">RUNPOD GPU SERVERLESS</span><h2 id="settings-title">Configurar agente</h2></div><button class="icon-button" type="button" data-action="close-settings" aria-label="Fechar configurações"><span class="svg-icon" data-icon="close" aria-hidden="true"></span></button></div>
-        <p class="modal-copy">A inferência usa o endpoint vLLM da A100. Tools, shell e edição rodam somente no processo principal do Electron; o renderer permanece isolado.</p>
+        <div class="modal-header"><div><span class="eyebrow">SENSIX AI GATEWAY</span><h2 id="settings-title">Configurar agente</h2></div><button class="icon-button" type="button" data-action="close-settings" aria-label="Fechar configurações"><span class="svg-icon" data-icon="close" aria-hidden="true"></span></button></div>
+        <p class="modal-copy">Inferência multi-tier: Tier 1 Ollama local (Qwen Coder 7B), Tier 2 OpenRouter free (Gemma/DeepSeek), Tier 3 OpenRouter premium (Claude). Tools e shell rodam somente no processo principal Electron; o renderer permanece isolado.</p>
         <form id="settings-form" class="settings-form">
-          <div class="settings-section"><span class="settings-section-title">Conexão do gateway</span><span class="settings-section-copy">Gateway SENSIX com catálogo RunPod em GPU serverless e escala a zero.</span></div>
-          <label>URL base<input id="base-url-input" type="url" autocomplete="url" placeholder="http://174.78.228.101:40746/v1" required /></label>
-          <label>Chave de API <small class="field-hint">Bearer do gateway SENSIX; guardado criptografado somente neste computador.</small><input id="api-key-input" type="password" autocomplete="off" placeholder="Informe o bearer do gateway SENSIX" /></label>
+          <div class="settings-section"><span class="settings-section-title">Conexão do gateway</span><span class="settings-section-copy">Gateway SENSIX com roteamento automático: inferência local Ollama (Qwen Coder) + OpenRouter (Claude, Gemma, DeepSeek).</span></div>
+          <label>URL base<input id="base-url-input" type="url" autocomplete="url" placeholder="https://api.sensix.it.com/v1" required /></label>
+          <label>Chave de API <small class="field-hint">Opcional para o gateway SENSIX; guardado criptografado somente neste computador.</small><input id="api-key-input" type="password" autocomplete="off" placeholder="Opcional — gateway SENSIX não requer bearer" /></label>
           <div class="settings-section"><span class="settings-section-title">Execução e aparência</span><span class="settings-section-copy">Preferências locais do desktop.</span></div>
           <div class="settings-grid"><label>Modo de ação<select id="action-mode-input"><option value="guarded">Protegido · bloqueia destrutivo</option><option value="full-access">Full-access · confirma ações sensíveis</option></select></label><label>Tema<select id="theme-input"><option value="obsidian">Obsidian</option><option value="slate">Slate</option><option value="cyber">Cyber / Matrix</option><option value="light">Claro</option></select></label></div>
           <div class="permissions-panel" aria-label="Permissões concedidas ao agente">

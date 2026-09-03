@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.2.3",
-  "description": "AXION Agentic Desktop — RunPod GPU Serverless com tools, shell e coding",
+  "version": "0.3.0",
+  "description": "SENSIX Agentic Desktop — Gateway multi-tier (Ollama local · OpenRouter free · OpenRouter premium) com tools, shell e coding",
   "main": "main.cjs",
   "private": true,
   "scripts": {
