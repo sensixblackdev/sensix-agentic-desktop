@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.0",
-  "description": "SENSIX Agentic Desktop — Gateway multi-tier (Ollama local · OpenRouter free · OpenRouter premium) com tools, shell e coding",
+  "version": "0.3.1",
+  "description": "SENSIX Agentic Desktop — Gateway multi-tier com normalização automática de tools, shell e coding",
   "main": "main.cjs",
   "private": true,
   "scripts": {

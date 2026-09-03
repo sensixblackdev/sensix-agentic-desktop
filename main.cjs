@@ -138,9 +138,57 @@ function publicSettings() {
   };
 }
 
-function requestHeaders(token, traceId) {
+function extractToolCallsFromContent(content) {
+  if (typeof content !== 'string') return [];
+  let trimmed = content.trim();
+  if (trimmed.startsWith('```json') && trimmed.endsWith('```')) trimmed = trimmed.slice(7, -3).trim();
+  else if (trimmed.startsWith('```') && trimmed.endsWith('```')) trimmed = trimmed.slice(3, -3).trim();
+
+  const authorized = ['list_files', 'read_file', 'search_text', 'write_file', 'replace_in_file', 'shell_exec'];
+  try {
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      const parsed = JSON.parse(trimmed);
+      const name = parsed.name || parsed.function || parsed.tool;
+      const args = parsed.arguments || parsed.parameters || parsed.args || {};
+      if (name && authorized.includes(name)) {
+        return [{
+          id: `call_${crypto.randomUUID().slice(0, 8)}`,
+          type: 'function',
+          function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) }
+        }];
+      }
+    } else if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const calls = [];
+        for (const item of parsed) {
+          if (item && typeof item === 'object') {
+            const name = item.name || item.function || item.tool;
+            const args = item.arguments || item.parameters || item.args || {};
+            if (name && authorized.includes(name)) {
+              calls.push({
+                id: `call_${crypto.randomUUID().slice(0, 8)}`,
+                type: 'function',
+                function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) }
+              });
+            }
+          }
+        }
+        if (calls.length > 0) return calls;
+      }
+    }
+  } catch {}
+  return [];
+}
+
+function requestHeaders(token, traceId, baseUrl) {
   const headers = { Accept: 'application/json', 'X-Trace-ID': traceId };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    const isSensix = baseUrl && isTokenOptional(baseUrl);
+    if (!isSensix || token.startsWith('sk-or-') || token.startsWith('sk-')) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
   return headers;
 }
 
@@ -185,14 +233,14 @@ async function fetchModels() {
   const { baseUrl, token } = readStoredCredentials();
   if (!token && !isTokenOptional(baseUrl)) throw new Error('Configure a chave do gateway antes de carregar os modelos.');
   const traceId = crypto.randomUUID();
-  const response = await fetch(`${baseUrl}/models`, { headers: requestHeaders(token, traceId), signal: AbortSignal.timeout(20000) });
+  const response = await fetch(`${baseUrl}/models`, { headers: requestHeaders(token, traceId, baseUrl), signal: AbortSignal.timeout(20000) });
   const body = await response.text();
   if (!response.ok) throw new Error(`Endpoint recusou o catálogo (HTTP ${response.status}).`);
   let parsed;
   try { parsed = JSON.parse(body); } catch { throw new Error('O endpoint retornou um catálogo inválido.'); }
   return (Array.isArray(parsed?.data) ? parsed.data : []).filter((model) => typeof model?.id === 'string').map((model) => ({
-    id: model.id, object: model.object || 'model', ownedBy: model.owned_by || 'sensix-gpu',
-    description: model.description || `${model.root || model.id} · GPU RunPod Serverless`,
+    id: model.id, object: model.object || 'model', ownedBy: model.owned_by || 'sensix-ai',
+    description: model.description || `${model.root || model.id} · Gateway SENSIX Multi-Tier`,
   }));
 }
 
@@ -330,7 +378,7 @@ async function requestAgentCompletion(baseUrl, token, messages, signal, traceId,
   if (tools?.length) { body.tools = tools; body.tool_choice = toolChoice; }
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: { ...requestHeaders(token, traceId), 'Content-Type': 'application/json' },
+    headers: { ...requestHeaders(token, traceId, baseUrl), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
   });
@@ -394,7 +442,15 @@ async function runAgent(runId, payload) {
       const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, payload.model, { tools: payload.mode === 'plan' ? [] : TOOL_DEFINITIONS });
       const message = completion.choices?.[0]?.message;
       if (!message) throw new Error('O modelo não retornou uma mensagem válida.');
-      const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+      let toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+      if (toolCalls.length === 0 && message.content && payload.mode !== 'plan') {
+        const extracted = extractToolCallsFromContent(message.content);
+        if (extracted.length > 0) {
+          toolCalls = extracted;
+          message.tool_calls = extracted;
+          message.content = null;
+        }
+      }
       if (toolCalls.length === 0) {
         sendChatEvent({ runId, type: 'synthesizing', message: 'Sintetizando resultado verificado...' });
         sendChatEvent({ runId, type: 'token', content: redactSecrets(message.content || 'Execução concluída sem texto de resposta.') });
