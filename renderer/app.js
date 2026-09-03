@@ -129,9 +129,19 @@
   function renderModelOptions() {
     const selected = currentSession?.model || models[0]?.id || '';
     const displayModelName = (model) => {
-      if (model.id === 'gpt-oss-120b') return 'GPT-OSS 120B · código + tools';
-      if (model.id === 'qwen3-32b') return 'Qwen3 32B · rápido';
-      return model.id;
+      const id = model.id;
+      if (id === 'qwen2.5-coder:7b' || id === 'qwen3-coder-30b') return '⚡ Qwen 2.5 Coder 7B (Local Offline)';
+      if (id === 'cognitivecomputations/dolphin-mistral-24b-venice-edition') return '🔓 Venice Dolphin 24B (Uncensored)';
+      if (id === 'nousresearch/hermes-3-llama-3.1-70b') return '🔓 Nous Hermes 3 70B (Uncensored Agentic)';
+      if (id === 'nousresearch/hermes-4-70b') return '🔓 Nous Hermes 4 70B (Uncensored Reasoning)';
+      if (id === 'qwen/qwen-2.5-coder-32b-instruct') return '💻 Qwen 2.5 Coder 32B (Elite Code)';
+      if (id === 'mistralai/codestral-2508') return '💻 Mistral Codestral (256k Code)';
+      if (id === 'mistralai/devstral-2512') return '🛠️ Mistral Devstral (Agentic Coder)';
+      if (id === 'deepseek/deepseek-chat') return '🧠 DeepSeek V3 685B (SOTA Coding)';
+      if (id === 'anthropic/claude-sonnet-5' || id === 'anthropic/claude-3.5-sonnet') return '👑 Claude Sonnet 5 (Premium)';
+      if (id === 'openai/gpt-4o') return '👑 GPT-4o (Premium)';
+      if (id === 'deepseek/deepseek-r1') return '🧠 DeepSeek R1 (Reasoning)';
+      return id;
     };
     els.modelSelect.innerHTML = models.length
       ? models.map((model) => `<option value="${escapeHtml(model.id)}" title="${escapeHtml(model.description)}" ${model.id === selected ? 'selected' : ''}>${escapeHtml(displayModelName(model))}</option>`).join('')

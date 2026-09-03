@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.4",
-  "description": "SENSIX Agentic Desktop — Multi-tool JSON depth parser, folder attachments, drag-drop and anti-procrastination ReAct",
+  "version": "0.3.5",
+  "description": "SENSIX Agentic Desktop — Uncensored coding models tier, folder attachments & anti-procrastination ReAct",
   "main": "main.cjs",
   "private": true,
   "scripts": {
