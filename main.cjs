@@ -29,6 +29,7 @@ const AGENT_SYSTEM_PROMPT = [
   '   - Lista dos arquivos criados e modificados com seus caminhos.',
   '   - Status factual dos testes e verificações de código executados no terminal.',
   '   - Comandos exatos para o usuário rodar e testar no PowerShell.',
+  '7. AUTO-HEALING E RECUPERAÇÃO EM TEMPO REAL: Se a execução de qualquer ferramenta falhar (erro de sintaxe, código de saída != 0, arquivo não encontrado ou token inválido), NUNCA PARE e NUNCA responda apenas explicando o erro em texto para o usuário. Você DEVE analisar o erro imediatamente, ajustar os argumentos ou usar ferramentas alternativas (ex: no PowerShell use ";" em vez de "&&", ou use search_text/read_file) e EXECUTAR A FERRAMENTA CORRIGIDA IMEDIATAMENTE NO MESMO TURNO até concluir a tarefa com sucesso.',
   'Workspace autorizado: D:\\WORKSPACE. Comandos destrutivos e acesso a segredos/Vault são bloqueados pelos guardrails.',
 ].join(' ');
 
@@ -428,7 +429,8 @@ function validateShellCommand(command) {
 }
 
 async function shellExecTool(args, activeRun) {
-  const command = validateShellCommand(args.command);
+  const rawCommand = validateShellCommand(args.command);
+  const command = rawCommand.replace(/\s+&&\s+/g, ' ; ');
   const cwd = ensureWorkspacePath(args.cwd || '.');
   const timeoutMs = Math.min(Math.max(Number(args.timeout_ms) || 60000, 1000), 120000);
   const powershell = process.env.SystemRoot ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : 'powershell.exe';
@@ -621,18 +623,31 @@ async function runAgent(runId, payload) {
       }
       if (toolCalls.length === 0) {
         const textContent = String(message.content || '').trim();
-        const isProcrastinating = payload.mode !== 'plan' && step < 4 && (
+        const lastToolMessage = conversation.slice().reverse().find((m) => m.role === 'tool');
+        let lastToolHadError = false;
+        if (lastToolMessage && lastToolMessage.content) {
+          try {
+            const parsed = JSON.parse(lastToolMessage.content);
+            lastToolHadError = parsed.ok === false || Boolean(parsed.error) || (typeof parsed.code === 'number' && parsed.code !== 0);
+          } catch {
+            lastToolHadError = /erro|falha|error|failed|invalid|não é válido/i.test(lastToolMessage.content);
+          }
+        }
+        const isExplainingErrorOrTryingRetry = /\b(?:parece que houve um erro|houve um erro|ocorreu um erro|erro ao executar|vamos tentar|vou tentar|não é válido|em vez disso|tentar usar|tentaremos|falhou ao|tentar o operador)\b/i.test(textContent);
+        const isProcrastinating = payload.mode !== 'plan' && step < 8 && (
+          (lastToolHadError && (isExplainingErrorOrTryingRetry || !textContent.includes('### 🏁'))) ||
           /\b(?:vou (?:ler|listar|criar|executar|verificar|fazer|inspecionar)|aguarde(?: um momento)?|estou listando|estou lendo|aguardo|me informe o caminho|por favor(?:,| ) forneça|forneça o conteúdo|compartilhe o conteúdo)\b/i.test(textContent) ||
           (step === 0 && /\b(?:entendido|claro|com certeza|vou começar|vou criar)\b/i.test(textContent) && textContent.length < 320 && !textContent.includes('```'))
         );
         if (isProcrastinating) {
-          writeAudit('warn', 'agent_procrastination_prevented', { step, textContent }, traceId);
-          sendChatEvent({ runId, type: 'synthesizing', message: 'Executando ferramentas do workspace de forma autônoma...' });
+          const isHealing = lastToolHadError && (isExplainingErrorOrTryingRetry || !textContent.includes('### 🏁'));
+          writeAudit('warn', isHealing ? 'agent_auto_healing_triggered' : 'agent_procrastination_prevented', { step, lastToolHadError, textContent }, traceId);
+          sendChatEvent({ runId, type: 'synthesizing', message: isHealing ? 'Detectada falha na ferramenta. Corrigindo e executando novamente...' : 'Executando ferramentas do workspace de forma autônoma...' });
           conversation.push({ role: 'assistant', content: message.content });
-          conversation.push({
-            role: 'user',
-            content: 'DIRETRIZ DE EXECUÇÃO: Não responda apenas prometendo em texto ou pedindo dados triviais. Execute agora as ferramentas necessárias (list_files, read_file, make_directory, write_file ou shell_exec) para inspecionar, criar os arquivos e validar a tarefa imediatamente.'
-          });
+          const instruction = isHealing
+            ? 'AUTO-HEALING MANDATÓRIO: A ferramenta anterior falhou. Não explique o erro em texto nem prometa tentar. Identifique a causa raiz, corrija os argumentos/comando (ex: use ";" em vez de "&&" no PowerShell, ou use search_text para buscas) e EXECUTE A FERRAMENTA AGORA no mesmo turno até concluir com sucesso.'
+            : 'DIRETRIZ DE EXECUÇÃO: Não responda apenas prometendo em texto ou pedindo dados triviais. Execute agora as ferramentas necessárias (list_files, read_file, make_directory, write_file ou shell_exec) para inspecionar, criar os arquivos e validar a tarefa imediatamente.';
+          conversation.push({ role: 'user', content: instruction });
           step += 1;
           continue;
         }

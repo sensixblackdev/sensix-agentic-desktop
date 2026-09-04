@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.9",
-  "description": "SENSIX Agentic Desktop — Live dynamic task step streaming (Codex/Claude Code style), open execution timeline & thinking states",
+  "version": "0.3.10",
+  "description": "SENSIX Agentic Desktop — Active auto-healing loop guard, PowerShell syntax normalization & uninterrupted recovery",
   "main": "main.cjs",
   "private": true,
   "scripts": {
