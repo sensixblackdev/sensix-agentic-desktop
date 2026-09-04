@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('sensix', {
   readFilePreview: (filePath) => ipcRenderer.invoke('file:read-preview', filePath),
   initProjectRules: (folderPath) => ipcRenderer.invoke('project:init-rules', folderPath),
   getProjectRules: (folderPath) => ipcRenderer.invoke('project:get-rules', folderPath),
+  getDirectivesStats: () => ipcRenderer.invoke('directives:get-stats'),
+  invalidateDirectives: (folderPath) => ipcRenderer.invoke('directives:invalidate', folderPath),
   loadSessions: () => ipcRenderer.invoke('sessions:load'),
   saveSessions: (sessions) => ipcRenderer.invoke('sessions:save', sessions),
   listModels: () => ipcRenderer.invoke('models:list'),

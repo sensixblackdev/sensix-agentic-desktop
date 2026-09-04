@@ -1,13 +1,13 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.11",
-  "description": "SENSIX Agentic Desktop — Isomorphic RFC 7807 telemetry, model error capture & resilient tool fallback",
+  "version": "0.3.12",
+  "description": "SENSIX Agentic Desktop — In-memory Directives RAG, compressed context & session priming",
   "main": "main.cjs",
   "private": true,
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check renderer/app.js"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check renderer/app.js"
   },
   "devDependencies": {
     "electron": "^39.2.6",
@@ -19,6 +19,8 @@
     "files": [
       "main.cjs",
       "preload.cjs",
+      "telemetry.cjs",
+      "directives-rag.cjs",
       "renderer/**/*",
       "README.md"
     ],

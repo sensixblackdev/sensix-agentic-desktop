@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const telemetry = require('./telemetry.cjs');
+const { getDirectivesContext, getDirectivesRAGStats, invalidateDirectivesCache } = require('./directives-rag.cjs');
 
 const DEFAULT_BASE_URL = process.env.SENSIX_API_BASE_URL || 'https://api.sensix.it.com/v1';
 const LEGACY_BASE_URL = 'http://174.78.228.101:40746/v1';
@@ -277,20 +278,20 @@ function truncateOutput(value, limit = MAX_TOOL_OUTPUT) {
   return `${Buffer.from(text, 'utf8').subarray(0, limit).toString('utf8')}\n[OUTPUT_TRUNCATED]`;
 }
 
-function loadWorkspaceDirectives(targetFolder = '.') {
-  const candidates = ['SENSIX.md', 'CLAUDE.md', '.sensix/RULES.md', 'AGENTS.md'];
+function loadWorkspaceDirectives(targetFolder = '.', userPrompt = '', options = {}) {
   try {
     const resolved = ensureWorkspacePath(targetFolder);
-    for (const candidate of candidates) {
-      const fullPath = path.join(resolved, candidate);
-      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-        const raw = fs.readFileSync(fullPath, 'utf8');
-        return {
-          found: true,
-          file: candidate,
-          content: raw.slice(0, 4000)
-        };
-      }
+    const res = getDirectivesContext(resolved, userPrompt, options);
+    if (res && res.found) {
+      return {
+        found: true,
+        file: res.file,
+        content: res.compressedPrompt,
+        shouldNotify: res.shouldNotify,
+        tokenEstimate: res.tokenEstimate,
+        cacheHit: res.cacheHit,
+        matchedRules: res.matchedRules,
+      };
     }
   } catch {}
   return { found: false };
@@ -756,10 +757,14 @@ async function runAgent(runId, payload) {
     const { baseUrl, token } = readStoredCredentials();
     if (!token && !isTokenOptional(baseUrl)) throw new Error('Configure a chave do gateway antes de conversar.');
     let systemPrompt = AGENT_SYSTEM_PROMPT;
-    const directives = loadWorkspaceDirectives(payload.projectFolder || '.');
-    if (directives.found) {
-      systemPrompt += `\n\n[DIRETRIZES DO PROJETO CARREGADAS DE ${directives.file}]:\n${directives.content}`;
-      sendChatEvent({ runId, type: 'synthesizing', message: `Diretrizes locais carregadas de ${directives.file}...` });
+    const userMessages = (payload.messages || []).filter((message) => message && message.role === 'user');
+    const lastUserPrompt = userMessages.slice(-1)[0]?.content || '';
+    const directives = loadWorkspaceDirectives(payload.projectFolder || '.', lastUserPrompt, { sessionId: payload.sessionId });
+    if (directives && directives.found) {
+      systemPrompt += `\n\n${directives.content}`;
+      if (directives.shouldNotify) {
+        sendChatEvent({ runId, type: 'synthesizing', message: `Contexto RAG de diretrizes ativo (${directives.file} · ${directives.tokenEstimate} tokens)...` });
+      }
     }
     const conversation = [{ role: 'system', content: systemPrompt }, ...payload.messages.filter((message) => message && message.role !== 'system')];
     const seenToolCalls = new Map();
@@ -977,6 +982,8 @@ ipcMain.handle('project:init-rules', async (_event, folderPath = '.') => {
   } catch (error) { return { ok: false, error: error.message }; }
 });
 ipcMain.handle('project:get-rules', async (_event, folderPath = '.') => loadWorkspaceDirectives(folderPath));
+ipcMain.handle('directives:get-stats', () => getDirectivesRAGStats());
+ipcMain.handle('directives:invalidate', (_event, folderPath) => invalidateDirectivesCache(folderPath));
 
 ipcMain.handle('telemetry:get-stats', () => telemetry.getTelemetryStats());
 ipcMain.handle('telemetry:get-events', (_event, filter) => telemetry.getTelemetryEvents(filter));

@@ -738,11 +738,16 @@
       if (cmd === '/rules') {
         try {
           const rules = await window.sensix.getProjectRules(session.projectFolder || '.');
+          const ragStats = await window.sensix.getDirectivesStats?.();
+          let statsHeader = '';
+          if (ragStats) {
+            statsHeader = `> ⚡ **RAG de Diretrizes Ativo**: \`${rules.file || 'AGENTS.md'}\` · **${ragStats.totalRequests || 1}** consultas (${ragStats.cacheHits || 0} cache hits) · Latência em memória <0.1ms · Contexto comprimido (~${rules.tokenEstimate || 250} tokens)\n\n`;
+          }
           session.messages.push({
             id: `msg-${Date.now()}`,
             role: 'assistant',
             content: rules && rules.found
-              ? `📋 **Diretrizes Ativas (\`${rules.file}\`):**\n\n\`\`\`markdown\n${rules.content}\n\`\`\``
+              ? `${statsHeader}📋 **Diretrizes Ativas (\`${rules.file}\` — RAG Comprimido):**\n\n\`\`\`markdown\n${rules.content}\n\`\`\``
               : `ℹ️ Nenhuma diretriz encontrada na raiz (\`SENSIX.md\`, \`CLAUDE.md\`, \`AGENTS.md\`). Digite \`/init\` para gerar uma!`
           });
         } catch (e) {
@@ -806,9 +811,16 @@
     renderSessions();
     renderMessages();
     setSending(true);
-    setRunStatus(`Executando ${model}...`);
     try {
-      const result = await window.sensix.sendChat({ model, messages: requestMessages, temperature: 0.2, mode: runMode, actionMode: els.actionModeSelect.value });
+      const result = await window.sensix.sendChat({
+        model,
+        messages: requestMessages,
+        temperature: 0.2,
+        mode: runMode,
+        actionMode: els.actionModeSelect.value,
+        sessionId: session.id,
+        projectFolder: session.projectFolder || '.'
+      });
       activeRunId = result.runId;
     } catch (error) {
       session.messages[session.messages.length - 1].content = `Não foi possível iniciar a execução: ${error.message || 'erro desconhecido'}`;
