@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.8",
-  "description": "SENSIX Agentic Desktop — Professional code blocks, copy actions, delivery completion protocol & non-intrusive scroll UI",
+  "version": "0.3.9",
+  "description": "SENSIX Agentic Desktop — Live dynamic task step streaming (Codex/Claude Code style), open execution timeline & thinking states",
   "main": "main.cjs",
   "private": true,
   "scripts": {

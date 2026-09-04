@@ -605,7 +605,8 @@ async function runAgent(runId, payload) {
         conversation.splice(1, conversation.length - 1, compactSummary, ...lastFew);
         sendChatEvent({ runId, type: 'synthesizing', message: 'Contexto compactado automaticamente (auto-compaction Claude Code)...' });
       }
-      if (step > 0) sendChatEvent({ runId, type: 'synthesizing', message: 'Ferramenta concluída. Solicitando o próximo passo ao modelo...' });
+      const stepLabel = step === 0 ? `Consultando ${payload.model}...` : `Etapa ${step + 1}: analisando próximo passo...`;
+      sendChatEvent({ runId, type: 'synthesizing', message: stepLabel });
       const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, payload.model, { tools: payload.mode === 'plan' ? [] : TOOL_DEFINITIONS });
       const message = completion.choices?.[0]?.message;
       if (!message) throw new Error('O modelo não retornou uma mensagem válida.');

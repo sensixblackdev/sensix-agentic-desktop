@@ -137,6 +137,56 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Destaque de Entrega Concluída */
 .delivery-heading { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; margin: 14px 0 8px; border-radius: 6px; background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.28); color: #4ade80 !important; font-size: 13px !important; font-weight: 700 !important; letter-spacing: .04em; }
 
+/* Live Agent Step / Thinking Status estilo Claude Code & Codex */
+.agent-live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  color: #4ade80;
+  font: 11px/1.4 var(--mono);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  animation: fadeIn 0.2s ease-out;
+}
+.live-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  animation: pulseGreen 1.5s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+@keyframes pulseGreen {
+  to {
+    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+  }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.agent-thinking-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 4px;
+  color: var(--dim);
+  font: 12px var(--mono);
+}
+.thinking-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .question-card { padding: 12px; border: 1px solid rgba(125,211,176,.26); border-radius: 9px; background: rgba(125,211,176,.045); }
 .question-card .message-body { color: #d9f8eb; }
 .plan-card { padding: 14px; border: 1px solid rgba(138,180,248,.28); border-radius: 9px; background: rgba(138,180,248,.045); }

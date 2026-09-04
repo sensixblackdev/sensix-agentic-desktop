@@ -329,7 +329,15 @@
       const needsAnswer = message.role === 'assistant' && /\?\s*$/.test(String(message.content || '').trim());
       const isPlan = message.role === 'assistant' && /(^|\n)#{1,3}\s*(plano|plan|etapas)/i.test(String(message.content || ''));
       const displayBody = message.displayContent || message.content;
-      return `<article class="message ${message.role === 'user' ? 'user' : 'assistant'} ${needsAnswer ? 'question-card' : ''} ${isPlan ? 'plan-card' : ''}" data-message-id="${escapeHtml(messageId)}"><div class="message-avatar" aria-hidden="true">${message.role === 'user' ? 'U' : 'S'}</div><div><div class="message-meta">${message.role === 'user' ? 'Você' : needsAnswer ? 'SENSIX Agent · precisa da sua decisão' : isPlan ? 'SENSIX Agent · plano' : 'SENSIX Agent'}</div>${attachmentsMarkup}${stepsMarkup}<div class="message-body">${renderMarkdown(displayBody)}</div></div></article>`;
+      const isCurrentAssistantRunning = isSending && index === session.messages.length - 1 && message.role === 'assistant';
+      const liveStatusText = message.liveStatus || (isCurrentAssistantRunning ? 'Agente processando...' : '');
+      const liveBadgeMarkup = isCurrentAssistantRunning && liveStatusText
+        ? `<div class="agent-live-status"><span class="live-pulse"></span><span>${escapeHtml(liveStatusText)}</span></div>`
+        : '';
+      const emptyLoadingMarkup = isCurrentAssistantRunning && !displayBody && steps.length === 0
+        ? `<div class="agent-thinking-box"><div class="thinking-spinner"></div><span>Pensando e preparando ações no workspace...</span></div>`
+        : '';
+      return `<article class="message ${message.role === 'user' ? 'user' : 'assistant'} ${needsAnswer ? 'question-card' : ''} ${isPlan ? 'plan-card' : ''}" data-message-id="${escapeHtml(messageId)}"><div class="message-avatar" aria-hidden="true">${message.role === 'user' ? 'U' : 'S'}</div><div><div class="message-meta">${message.role === 'user' ? 'Você' : needsAnswer ? 'SENSIX Agent · precisa da sua decisão' : isPlan ? 'SENSIX Agent · plano' : 'SENSIX Agent'}</div>${liveBadgeMarkup}${attachmentsMarkup}${stepsMarkup}<div class="message-body">${renderMarkdown(displayBody)}${emptyLoadingMarkup}</div></div></article>`;
     }).join('');
     requestAnimationFrame(() => { if (wasNearBottom || isSending) els.chatScroll.scrollTop = els.chatScroll.scrollHeight; updateScrollAffordance(); });
   }
@@ -661,7 +669,14 @@
       content: fullContent,
       displayContent: content || (currentAttachments.length ? `[${currentAttachments.length} anexo(s)]` : ''),
       attachments: currentAttachments
-    }, { id: crypto.randomUUID(), role: 'assistant', content: '', steps: [] });
+    }, {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      steps: [],
+      liveStatus: `Iniciando análise com ${model}...`,
+      stepsCollapsed: false
+    });
     if (session.title === 'Nova sessão') session.title = (content || 'Análise de arquivos').slice(0, 42) + (content.length > 42 ? '…' : '');
     session.updatedAt = Date.now();
     els.composerInput.value = '';
@@ -678,6 +693,7 @@
       activeRunId = result.runId;
     } catch (error) {
       session.messages[session.messages.length - 1].content = `Não foi possível iniciar a execução: ${error.message || 'erro desconhecido'}`;
+      session.messages[session.messages.length - 1].liveStatus = null;
       setSending(false);
       setRunStatus('');
       renderMessages();
@@ -688,11 +704,17 @@
     const session = currentOrNewSession();
     const assistant = session.messages[session.messages.length - 1];
     if (!assistant || assistant.role !== 'assistant') return;
-    if (event.type === 'start') setRunStatus('Agente analisando a tarefa...');
+    if (event.type === 'start') {
+      assistant.liveStatus = 'Agente analisando a tarefa...';
+      setRunStatus(assistant.liveStatus);
+      renderMessages();
+    }
     if (event.type === 'tool_start') {
       if (!Array.isArray(assistant.steps)) assistant.steps = [];
       assistant.steps.push({ id: event.toolId, tool: event.tool, description: event.description, status: 'running' });
-      setRunStatus(event.description || `Executando ${event.tool}...`);
+      assistant.liveStatus = event.description || `Executando ${event.tool}...`;
+      assistant.stepsCollapsed = false;
+      setRunStatus(assistant.liveStatus);
       persistSessions();
       renderMessages();
     }
@@ -700,7 +722,8 @@
       if (!Array.isArray(assistant.steps)) assistant.steps = [];
       const step = assistant.steps.find((item) => item.id === event.toolId);
       if (step) Object.assign(step, { status: event.ok ? 'done' : 'error', summary: event.summary });
-      setRunStatus(event.ok ? `${event.tool} concluída` : `${event.tool} falhou`);
+      assistant.liveStatus = event.ok ? `${event.tool} concluída` : `${event.tool} falhou`;
+      setRunStatus(assistant.liveStatus);
       persistSessions();
       renderMessages();
     }
@@ -709,12 +732,44 @@
       renderTodos(event.todos);
       persistSessions();
     }
-    if (event.type === 'synthesizing') setRunStatus(event.message || 'Sintetizando resultado...');
-    if (event.type === 'token') { assistant.content += event.content || ''; persistSessions(); renderMessages(); }
+    if (event.type === 'synthesizing') {
+      assistant.liveStatus = event.message || 'Sintetizando próximo passo...';
+      setRunStatus(assistant.liveStatus);
+      renderMessages();
+    }
+    if (event.type === 'token') {
+      assistant.content += event.content || '';
+      persistSessions();
+      renderMessages();
+    }
     if (event.type === 'usage') setRunStatus('Resposta concluída · uso registrado pelo gateway');
-    if (event.type === 'done') { session.updatedAt = Date.now(); persistSessions(); setSending(false); activeRunId = null; setRunStatus(''); renderSessions(); renderMessages(); }
-    if (event.type === 'cancelled') { setSending(false); activeRunId = null; setRunStatus('Execução interrompida.'); persistSessions(); renderMessages(); }
-    if (event.type === 'error') { assistant.content += `\n\nFalha: ${event.message || 'o gateway retornou um erro.'}`; setSending(false); activeRunId = null; setRunStatus('Execução encerrada com erro.'); persistSessions(); renderMessages(); }
+    if (event.type === 'done') {
+      assistant.liveStatus = null;
+      session.updatedAt = Date.now();
+      persistSessions();
+      setSending(false);
+      activeRunId = null;
+      setRunStatus('');
+      renderSessions();
+      renderMessages();
+    }
+    if (event.type === 'cancelled') {
+      assistant.liveStatus = null;
+      setSending(false);
+      activeRunId = null;
+      setRunStatus('Execução interrompida.');
+      persistSessions();
+      renderMessages();
+    }
+    if (event.type === 'error') {
+      assistant.liveStatus = null;
+      assistant.content += `\n\nFalha: ${event.message || 'o gateway retornou um erro.'}`;
+      setSending(false);
+      activeRunId = null;
+      setRunStatus('Execução encerrada com erro.');
+      persistSessions();
+      renderMessages();
+    }
   }
   function autoResize() { els.composerInput.style.height = 'auto'; els.composerInput.style.height = `${Math.min(els.composerInput.scrollHeight, 180)}px`; }
 
