@@ -1334,7 +1334,10 @@ function createWindow() {
     if (url.startsWith('https://')) shell.openExternal(url);
     return { action: 'deny' };
   });
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  const indexPath = fs.existsSync(path.join(__dirname, 'renderer', 'dist', 'index.html'))
+    ? path.join(__dirname, 'renderer', 'dist', 'index.html')
+    : path.join(__dirname, 'renderer', 'index.html');
+  mainWindow.loadFile(indexPath);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 

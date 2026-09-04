@@ -1,17 +1,28 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.16",
-  "description": "SENSIX Agentic Desktop — Parallel Read Execution, Inline Diff Viewer, Esc Stop Shortcut & Enhanced Commands",
+  "version": "0.3.17",
+  "description": "SENSIX Agentic Desktop — Modular JSX/React Architecture, Obsidian 3D Modals, Reactive Toasts & Lucide System",
   "main": "main.cjs",
   "private": true,
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs && node --check renderer/app.js"
+    "build:renderer": "vite build --config renderer/vite.config.mjs",
+    "build": "npm run build:renderer",
+    "dev:renderer": "vite --config renderer/vite.config.mjs",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
     "electron": "^39.2.6",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "vite": "^6.0.0"
   },
   "build": {
     "appId": "com.axion.sensix.agentic",
