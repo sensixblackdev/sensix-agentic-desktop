@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('sensix', {
   clearTelemetry: () => ipcRenderer.invoke('telemetry:clear'),
   getLearningStats: () => ipcRenderer.invoke('learning:get-stats'),
   clearLearningLedger: () => ipcRenderer.invoke('learning:clear'),
+  executeCommand: (cmd) => ipcRenderer.invoke('shell:execute', cmd),
+  previewFile: (filePath) => ipcRenderer.invoke('file:read-preview', filePath),
+  getLedgerEntries: () => ipcRenderer.invoke('learning:get-entries'),
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),

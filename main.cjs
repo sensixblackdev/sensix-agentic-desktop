@@ -1455,6 +1455,41 @@ ipcMain.handle('window:maximize', () => {
   if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize();
   return mainWindow.isMaximized();
 });
+
+// ─── Shell Execute (Terminal Page) — Guardrail Protected ───────────────────
+const SHELL_BLOCKLIST = [
+  /rm\s+-rf/i, /Remove-Item.*-Recurse/i, /Format-Volume/i,
+  /del\s+\/[sS]/i, /rd\s+\/s/i, /mkfs/i, /dd\s+if=/i,
+  /shutdown/i, /reboot/i, /Restart-Computer/i, /Stop-Computer/i,
+  /curl.*vault/i, /Invoke-WebRequest.*VAULT/i,
+  /cat.*\.env/i, /Get-Content.*\.env/i,
+];
+
+ipcMain.handle('shell:execute', async (_evt, cmd) => {
+  if (!cmd || typeof cmd !== 'string' || cmd.trim().length === 0) {
+    return { ok: false, code: 1, stdout: '', stderr: 'Comando vazio.' };
+  }
+  for (const pattern of SHELL_BLOCKLIST) {
+    if (pattern.test(cmd)) {
+      return { ok: false, code: 403, stdout: '', stderr: `[GUARDRAIL] Comando bloqueado por política de segurança: "${cmd}"` };
+    }
+  }
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    exec(`powershell.exe -NonInteractive -NoProfile -Command "${cmd.replace(/"/g, '\"')}"`,
+      { timeout: 15000, maxBuffer: 512 * 1024 },
+      (error, stdout, stderr) => {
+        resolve({
+          ok: !error,
+          code: error ? (error.code || 1) : 0,
+          stdout: stdout || '',
+          stderr: stderr || (error ? error.message : ''),
+        });
+      }
+    );
+  });
+});
+
 ipcMain.handle('window:close', () => mainWindow?.close());
 
 process.on('uncaughtException', (error) => writeAudit('error', 'uncaught_exception', { error: safeErrorMessage(error) }));
