@@ -16,6 +16,7 @@ const MAX_MODEL_TOOL_OUTPUT = 3 * 1024;
 const MAX_LIST_RESULTS = 60;
 const MAX_FILE_WRITE = 512 * 1024;
 const MAX_SAME_TOOL_CALLS = 3;
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_files', 'search_text']);
 const activeRuns = new Map();
 let mainWindow = null;
 
@@ -633,9 +634,20 @@ async function shellExecTool(args, activeRun) {
   const powershell = process.env.SystemRoot ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : 'powershell.exe';
   const result = await runChildProcess(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], { cwd, env: { ...process.env, SENSIX_AGENT_RUN: '1' } }, timeoutMs, activeRun);
   const touchesSecrets = /(?:^|[\s'"`])(?:[^\s'"`]*[\\/])?\.env(?:\.|\b)/i.test(command);
-  return touchesSecrets
+  const baseResult = touchesSecrets
     ? { ok: result.code === 0 && !result.timedOut, cwd: relativeWorkspacePath(cwd), code: result.code, timedOut: result.timedOut, stdout: '[SAÍDA SUPRIMIDA: comando envolveu arquivo de configuração sensível]', stderr: result.stderr ? '[ERRO SUPRIMIDO: comando envolveu arquivo de configuração sensível]' : '' }
     : { ok: result.code === 0 && !result.timedOut, cwd: relativeWorkspacePath(cwd), ...result };
+
+  if (!baseResult.ok && baseResult.stderr) {
+    const npmMissing = baseResult.stderr.match(/Cannot find module ['"]([^'"]+)['"]/i);
+    const pipMissing = baseResult.stderr.match(/ModuleNotFoundError: No module named ['"]([^'"]+)['"]/i);
+    if (npmMissing) {
+      baseResult.hint = `Auto-healing: dependência '${npmMissing[1]}' não encontrada. Instale com 'npm install ${npmMissing[1]}'.`;
+    } else if (pipMissing) {
+      baseResult.hint = `Auto-healing: dependência Python '${pipMissing[1]}' não encontrada. Instale com 'pip install ${pipMissing[1]}'.`;
+    }
+  }
+  return baseResult;
 }
 
 async function makeDirectoryTool(args) {
@@ -689,11 +701,19 @@ async function patchFileTool(args) {
   const patched = content.replace(oldString, () => newString);
   safeAtomicWrite(target, patched);
   const diffLines = newString.split('\n').length - oldString.split('\n').length;
+  const oldSnippet = oldString.length > 600 ? oldString.slice(0, 600) + '...' : oldString;
+  const newSnippet = newString.length > 600 ? newString.slice(0, 600) + '...' : newString;
   return {
     ok: true,
     path: relativeWorkspacePath(target),
     bytes: Buffer.byteLength(patched, 'utf8'),
     diffLines,
+    diff: {
+      path: relativeWorkspacePath(target),
+      diffLines,
+      oldSnippet,
+      newSnippet
+    },
     message: `Arquivo ${relativeWorkspacePath(target)} editado cirurgicamente com sucesso.`
   };
 }
@@ -1209,30 +1229,85 @@ async function runAgent(runId, payload) {
       }
       conversation.push({ role: 'assistant', content: message.content || null, tool_calls: toolCalls });
       let stopLossReason = '';
-      for (const call of toolCalls) {
+
+      async function executeSingleToolCall(call) {
         const name = String(call?.function?.name || 'unknown');
         const args = parseToolArguments(call?.function?.arguments);
         const toolId = call.id || crypto.randomUUID();
         sendChatEvent({ runId, type: 'tool_start', toolId, tool: name, description: describeTool(name, args) });
         const startedAt = Date.now();
         let result;
+        let stopLoss = null;
         try {
           const signature = toolCallSignature(name, args);
           const occurrences = (seenToolCalls.get(signature) || 0) + 1;
           seenToolCalls.set(signature, occurrences);
           if (occurrences >= MAX_SAME_TOOL_CALLS) {
-            stopLossReason = `repetição de ${name} com os mesmos argumentos (${occurrences} vezes)`;
-            result = { ok: false, error: `Stop-loss: ${stopLossReason}.` };
-          } else result = await executeTool(name, args, activeRun);
+            stopLoss = `repetição de ${name} com os mesmos argumentos (${occurrences} vezes)`;
+            result = { ok: false, error: `Stop-loss: ${stopLoss}.` };
+          } else {
+            result = await executeTool(name, args, activeRun);
+          }
           const toolOk = result.ok !== false;
-          sendChatEvent({ runId, type: 'tool_done', toolId, tool: name, ok: toolOk, summary: toolOk ? summarizeTool(name, result) : result.error, durationMs: Date.now() - startedAt });
+          sendChatEvent({
+            runId,
+            type: 'tool_done',
+            toolId,
+            tool: name,
+            ok: toolOk,
+            summary: toolOk ? summarizeTool(name, result) : result.error,
+            durationMs: Date.now() - startedAt,
+            details: result,
+            diff: result?.diff || null
+          });
           writeAudit(toolOk ? 'info' : 'warn', 'tool_completed', { tool: name, ok: toolOk, durationMs: Date.now() - startedAt }, traceId);
         } catch (error) {
           result = { ok: false, error: safeErrorMessage(error) };
           sendChatEvent({ runId, type: 'tool_done', toolId, tool: name, ok: false, summary: result.error, durationMs: Date.now() - startedAt });
           writeAudit('warn', 'tool_failed', { tool: name, error: result.error }, traceId);
         }
-        conversation.push({ role: 'tool', tool_call_id: toolId, name, content: modelToolContent(result) });
+        return { toolId, name, result, stopLoss };
+      }
+
+      // Agrupar toolCalls em batches: ferramentas de leitura contíguas executam concorrentemente via Promise.all
+      const batches = [];
+      let currentBatch = [];
+      let currentIsReadOnly = false;
+
+      for (const call of toolCalls) {
+        const name = String(call?.function?.name || 'unknown');
+        const isReadOnly = READ_ONLY_TOOLS.has(name);
+        if (currentBatch.length === 0) {
+          currentBatch.push(call);
+          currentIsReadOnly = isReadOnly;
+        } else if (isReadOnly && currentIsReadOnly) {
+          currentBatch.push(call);
+        } else {
+          batches.push({ calls: currentBatch, isReadOnly: currentIsReadOnly });
+          currentBatch = [call];
+          currentIsReadOnly = isReadOnly;
+        }
+      }
+      if (currentBatch.length > 0) {
+        batches.push({ calls: currentBatch, isReadOnly: currentIsReadOnly });
+      }
+
+      for (const batch of batches) {
+        let batchResults;
+        if (batch.isReadOnly && batch.calls.length > 1) {
+          batchResults = await Promise.all(batch.calls.map((call) => executeSingleToolCall(call)));
+        } else {
+          batchResults = [];
+          for (const call of batch.calls) {
+            batchResults.push(await executeSingleToolCall(call));
+          }
+        }
+
+        for (const res of batchResults) {
+          if (res.stopLoss && !stopLossReason) stopLossReason = res.stopLoss;
+          conversation.push({ role: 'tool', tool_call_id: res.toolId, name: res.name, content: modelToolContent(res.result) });
+        }
+        if (stopLossReason) break;
       }
       if (stopLossReason) {
         await recoverFromToolLoop({ runId, baseUrl, token, conversation, controller, traceId, model: activeModel, reason: stopLossReason });

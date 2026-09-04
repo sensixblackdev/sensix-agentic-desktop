@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.15",
-  "description": "SENSIX Agentic Desktop — Robustness Shield: Atomic File Ops, CRLF Matching, Safe Compaction & Real-Time Todo Streaming",
+  "version": "0.3.16",
+  "description": "SENSIX Agentic Desktop — Parallel Read Execution, Inline Diff Viewer, Esc Stop Shortcut & Enhanced Commands",
   "main": "main.cjs",
   "private": true,
   "scripts": {

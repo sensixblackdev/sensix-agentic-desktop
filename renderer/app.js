@@ -332,7 +332,11 @@
       const messageId = message.id || `message-${index}`;
       const collapsed = message.stepsCollapsed === true;
       const stepsMarkup = steps.length
-        ? `<div class="tool-timeline ${collapsed ? 'collapsed' : ''}"><button class="tool-timeline-toggle" type="button" data-action="toggle-tool-timeline" data-message-id="${escapeHtml(messageId)}" aria-expanded="${String(!collapsed)}"><span>${collapsed ? 'Mostrar' : 'Ocultar'} etapas · ${steps.length}</span><span class="svg-icon" data-icon="arrowDown" aria-hidden="true"></span></button><div class="tool-timeline-body">${steps.map((step) => `<div class="tool-step ${escapeHtml(step.status || 'running')}"><span class="tool-step-state" aria-hidden="true"></span><div><strong>${escapeHtml(step.tool || 'tool')}</strong><small>${escapeHtml(step.summary || step.description || 'Executando...')}</small></div></div>`).join('')}</div></div>`
+        ? `<div class="tool-timeline ${collapsed ? 'collapsed' : ''}"><button class="tool-timeline-toggle" type="button" data-action="toggle-tool-timeline" data-message-id="${escapeHtml(messageId)}" aria-expanded="${String(!collapsed)}"><span>${collapsed ? 'Mostrar' : 'Ocultar'} etapas · ${steps.length}</span><span class="svg-icon" data-icon="arrowDown" aria-hidden="true"></span></button><div class="tool-timeline-body">${steps.map((step) => {
+            const diff = step.diff;
+            const diffHtml = diff ? `<div class="tool-diff-container"><button class="tool-diff-btn" type="button" data-action="toggle-diff" data-step-id="${escapeHtml(step.id || '')}"><span class="diff-tag">± Diff</span><span>${escapeHtml(diff.path)}</span><span style="color:var(--dim)">(${diff.diffLines >= 0 ? '+' + diff.diffLines : diff.diffLines} lin)</span></button><div class="tool-diff-preview hidden" id="diff-${escapeHtml(step.id || '')}"><div class="diff-file-title">Alteração em ${escapeHtml(diff.path)}</div>${diff.oldSnippet ? `<pre class="diff-line-removed"><code>- ${escapeHtml(diff.oldSnippet)}</code></pre>` : ''}${diff.newSnippet ? `<pre class="diff-line-added"><code>+ ${escapeHtml(diff.newSnippet)}</code></pre>` : ''}</div></div>` : '';
+            return `<div class="tool-step ${escapeHtml(step.status || 'running')}"><span class="tool-step-state" aria-hidden="true"></span><div><strong>${escapeHtml(step.tool || 'tool')}</strong><small>${escapeHtml(step.summary || step.description || 'Executando...')}</small>${diffHtml}</div></div>`;
+          }).join('')}</div></div>`
         : '';
       const attachmentsMarkup = Array.isArray(message.attachments) && message.attachments.length > 0
         ? `<div class="attachments-bar" style="padding:0 0 8px;">${message.attachments.map((att) => {
@@ -691,6 +695,44 @@
       autoResize();
 
       const session = currentOrNewSession();
+      if (cmd === '/help') {
+        session.messages.push({
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `🤖 **Comandos do SENSIX Agentic Console:**\n\n` +
+            `• \`/help\` — Exibe esta central de comandos.\n` +
+            `• \`/status\` — Diagnóstico operacional da sessão (modelo, workspace, tokens, checklist e RAG).\n` +
+            `• \`/clear\` — Limpa mensagens e checklist da sessão ativa.\n` +
+            `• \`/compact\` — Compacta o histórico para economizar contexto e tokens.\n` +
+            `• \`/todo\` — Alterna a visibilidade do painel de progresso / checklist.\n` +
+            `• \`/rules\` — Inspeciona as diretrizes ativas (\`AGENTS.md\`) e métricas do RAG.\n` +
+            `• \`/learning\` — Exibe o ledger de auto-aprendizado e lições aprendidas.\n` +
+            `• \`/init\` — Cria o arquivo canônico de diretrizes (\`AGENTS.md\`) na raiz do projeto.`
+        });
+        persistSessions();
+        renderMessages();
+        return;
+      }
+      if (cmd === '/status') {
+        const ragStats = await window.sensix.getDirectivesStats?.();
+        const learningStats = await window.sensix.getLearningStats?.();
+        const todos = session.todos || [];
+        const completedTodos = todos.filter(t => t.status === 'completed').length;
+        session.messages.push({
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `📊 **Status Operacional da Sessão:**\n\n` +
+            `• **Modelo Ativo:** \`${session.model || els.modelSelect.value || 'Padrão'}\`\n` +
+            `• **Projeto / Workspace:** \`${session.project || 'Geral'}\`\n` +
+            `• **Mensagens no Histórico:** ${session.messages.length}\n` +
+            `• **Checklist de Tarefas:** ${completedTodos}/${todos.length} concluídas\n` +
+            `• **Diretrizes RAG:** ${ragStats?.cacheHits || 0} hits de cache em memória\n` +
+            `• **Auto-Learning Ledger:** ${learningStats?.totalLessons || 0} lições ativas`
+        });
+        persistSessions();
+        renderMessages();
+        return;
+      }
       if (cmd === '/clear') {
         session.messages = [];
         session.todos = [];
@@ -880,7 +922,7 @@
     if (event.type === 'tool_done') {
       if (!Array.isArray(assistant.steps)) assistant.steps = [];
       const step = assistant.steps.find((item) => item.id === event.toolId);
-      if (step) Object.assign(step, { status: event.ok ? 'done' : 'error', summary: event.summary });
+      if (step) Object.assign(step, { status: event.ok ? 'done' : 'error', summary: event.summary, diff: event.diff || null });
       assistant.liveStatus = event.ok ? `${event.tool} concluída` : `${event.tool} falhou`;
       setRunStatus(assistant.liveStatus);
       persistSessions();
@@ -957,6 +999,12 @@
           target.textContent = 'Erro ao copiar';
         }
       }
+      return;
+    }
+    if (action === 'toggle-diff') {
+      const stepId = target.dataset.stepId;
+      const preview = document.getElementById(`diff-${stepId}`);
+      if (preview) preview.classList.toggle('hidden');
       return;
     }
     if (action === 'toggle-todo-list') {
@@ -1091,9 +1139,13 @@
   els.actionModeSelect.addEventListener('change', () => { localStorage.setItem('sensix-action-mode', els.actionModeSelect.value === 'full-access' ? 'full-access' : 'guarded'); if (els.actionModeInput) els.actionModeInput.value = els.actionModeSelect.value === 'full-access' ? 'full-access' : 'guarded'; syncModeControls(); });
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); newSession(); }
-    if (event.key === 'Escape' && !els.settingsModal.classList.contains('hidden')) hideSettings();
-    if (event.key === 'Escape' && !els.telemetryModal.classList.contains('hidden')) hideTelemetry();
-    if (event.key === 'Escape' && !els.confirmModal.classList.contains('hidden')) closeConfirm();
+    if (event.key === 'Escape' && !els.settingsModal.classList.contains('hidden')) { hideSettings(); return; }
+    if (event.key === 'Escape' && !els.telemetryModal.classList.contains('hidden')) { hideTelemetry(); return; }
+    if (event.key === 'Escape' && !els.confirmModal.classList.contains('hidden')) { closeConfirm(); return; }
+    if (event.key === 'Escape' && isSending && activeRunId) {
+      window.sensix.cancelChat(activeRunId);
+      setRunStatus('Interrompendo execução (Esc)...');
+    }
   });
   els.settingsModal.addEventListener('click', (event) => { if (event.target === els.settingsModal) hideSettings(); });
   els.telemetryModal.addEventListener('click', (event) => { if (event.target === els.telemetryModal) hideTelemetry(); });
