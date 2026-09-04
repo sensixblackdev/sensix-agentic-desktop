@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.14",
-  "description": "SENSIX Agentic Desktop — Anti-Leak Tool Guard, Bullet Call Parser, Proactive ReAct & Clean History",
+  "version": "0.3.15",
+  "description": "SENSIX Agentic Desktop — Robustness Shield: Atomic File Ops, CRLF Matching, Safe Compaction & Real-Time Todo Streaming",
   "main": "main.cjs",
   "private": true,
   "scripts": {

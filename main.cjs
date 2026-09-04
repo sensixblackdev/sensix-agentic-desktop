@@ -314,8 +314,29 @@ function safeErrorMessage(error) {
   return redactSecrets(error?.message || 'Falha desconhecida').replace(/[A-Z]:\\[^\s]+/gi, '[SYSTEM_PATH]');
 }
 
+function safeAtomicWrite(filePath, data) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const temporary = `${filePath}.sensix-${crypto.randomUUID()}.tmp`;
+  fs.writeFileSync(temporary, data, { encoding: 'utf8', mode: 0o600 });
+  try {
+    fs.renameSync(temporary, filePath);
+  } catch {
+    try {
+      fs.copyFileSync(temporary, filePath);
+      fs.unlinkSync(temporary);
+    } catch {
+      fs.writeFileSync(filePath, data, { encoding: 'utf8' });
+      try { fs.unlinkSync(temporary); } catch {}
+    }
+  }
+}
+
 function ensureWorkspacePath(inputPath = '.') {
-  const target = path.resolve(WORKSPACE_ROOT, String(inputPath || '.'));
+  let cleaned = String(inputPath || '.').trim();
+  if (/^[/\\]+[^/\\]/.test(cleaned) && !/^[a-zA-Z]:[/\\]/.test(cleaned)) {
+    cleaned = cleaned.replace(/^[/\\]+/, '');
+  }
+  const target = path.resolve(WORKSPACE_ROOT, cleaned || '.');
   const relative = path.relative(WORKSPACE_ROOT, target);
   if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('A ferramenta só pode acessar caminhos dentro de D:\\WORKSPACE.');
   const segments = relative.toLowerCase().split(path.sep);
@@ -553,27 +574,40 @@ async function writeFileTool(args) {
   const file = ensureWorkspacePath(args.path);
   const content = String(args.content ?? '');
   if (Buffer.byteLength(content, 'utf8') > MAX_FILE_WRITE) throw new Error('Escrita excede 512 KB por chamada.');
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.sensix-${crypto.randomUUID()}.tmp`;
-  fs.writeFileSync(temporary, content, { encoding: 'utf8', mode: 0o600 });
-  fs.renameSync(temporary, file);
+  safeAtomicWrite(file, content);
   return { ok: true, path: relativeWorkspacePath(file), bytes: Buffer.byteLength(content, 'utf8') };
 }
 
 async function replaceInFileTool(args) {
   const file = ensureWorkspacePath(args.path);
-  const oldText = String(args.old_text ?? '');
-  const newText = String(args.new_text ?? '');
+  let oldText = String(args.old_text ?? '');
+  let newText = String(args.new_text ?? '');
   if (!oldText) throw new Error('old_text não pode ser vazio.');
   const current = fs.readFileSync(file, 'utf8');
+
+  // CRLF auto-reconciliation
+  if (!current.includes(oldText)) {
+    if (current.includes('\r\n') && !oldText.includes('\r\n')) {
+      const crlf = oldText.replace(/\r?\n/g, '\r\n');
+      if (current.includes(crlf)) {
+        oldText = crlf;
+        newText = newText.replace(/\r?\n/g, '\r\n');
+      }
+    } else if (!current.includes('\r\n') && oldText.includes('\r\n')) {
+      const lf = oldText.replace(/\r\n/g, '\n');
+      if (current.includes(lf)) {
+        oldText = lf;
+        newText = newText.replace(/\r\n/g, '\n');
+      }
+    }
+  }
+
   const occurrences = current.split(oldText).length - 1;
   if (occurrences === 0) throw new Error('Texto-alvo não encontrado; releia o arquivo antes de editar.');
   if (!args.replace_all && occurrences > 1) throw new Error(`Texto-alvo aparece ${occurrences} vezes; use replace_all ou mais contexto.`);
-  const next = args.replace_all ? current.split(oldText).join(newText) : current.replace(oldText, newText);
+  const next = args.replace_all ? current.split(oldText).join(newText) : current.replace(oldText, () => newText);
   if (Buffer.byteLength(next, 'utf8') > MAX_FILE_WRITE) throw new Error('Arquivo resultante excede 512 KB.');
-  const temporary = `${file}.sensix-${crypto.randomUUID()}.tmp`;
-  fs.writeFileSync(temporary, next, { encoding: 'utf8', mode: 0o600 });
-  fs.renameSync(temporary, file);
+  safeAtomicWrite(file, next);
   return { ok: true, path: relativeWorkspacePath(file), replacements: args.replace_all ? occurrences : 1 };
 }
 
@@ -616,10 +650,27 @@ async function patchFileTool(args) {
   if (isSecretPath(target)) throw new Error('Edição bloqueada em arquivos protegidos.');
 
   const content = fs.readFileSync(target, 'utf8');
-  const oldString = String(args.old_string || '');
-  const newString = String(args.new_string || '');
+  let oldString = String(args.old_string || '');
+  let newString = String(args.new_string || '');
 
   if (!oldString) throw new Error('old_string não pode ser vazia.');
+
+  // CRLF auto-reconciliation
+  if (!content.includes(oldString)) {
+    if (content.includes('\r\n') && !oldString.includes('\r\n')) {
+      const crlf = oldString.replace(/\r?\n/g, '\r\n');
+      if (content.includes(crlf)) {
+        oldString = crlf;
+        newString = newString.replace(/\r?\n/g, '\r\n');
+      }
+    } else if (!content.includes('\r\n') && oldString.includes('\r\n')) {
+      const lf = oldString.replace(/\r\n/g, '\n');
+      if (content.includes(lf)) {
+        oldString = lf;
+        newString = newString.replace(/\r\n/g, '\n');
+      }
+    }
+  }
 
   let count = 0;
   let pos = content.indexOf(oldString);
@@ -635,8 +686,8 @@ async function patchFileTool(args) {
     throw new Error(`old_string ocorre ${count} vezes em ${relativeWorkspacePath(target)}. Inclua mais linhas de contexto antes ou depois para torná-la única.`);
   }
 
-  const patched = content.replace(oldString, newString);
-  fs.writeFileSync(target, patched, 'utf8');
+  const patched = content.replace(oldString, () => newString);
+  safeAtomicWrite(target, patched);
   const diffLines = newString.split('\n').length - oldString.split('\n').length;
   return {
     ok: true,
@@ -654,7 +705,7 @@ async function todoWriteTool(args, activeRun) {
     task: String(t.task || ''),
     status: ['pending', 'in_progress', 'completed'].includes(t.status) ? t.status : 'pending'
   }));
-  sendChatEvent({ runId: activeRun.runId, type: 'todo_update', todos: normalizedTodos });
+  sendChatEvent({ runId: activeRun?.runId, type: 'todo_update', todos: normalizedTodos });
   const pending = normalizedTodos.filter(t => t.status === 'pending').length;
   const inProgress = normalizedTodos.filter(t => t.status === 'in_progress').length;
   const completed = normalizedTodos.filter(t => t.status === 'completed').length;
@@ -946,7 +997,7 @@ function toolCallSignature(name, args) {
 
 async function recoverFromToolLoop({ runId, baseUrl, token, conversation, controller, traceId, model, reason }) {
   sendChatEvent({ runId, type: 'synthesizing', message: 'Stop-loss acionado: consolidando o resultado sem novas ferramentas...' });
-  conversation.push({ role: 'system', content: `STOP-LOSS: ${reason} Não execute mais ferramentas. Entregue agora uma síntese objetiva do que foi concluído, do que falhou e do próximo passo verificável.` });
+  conversation.push({ role: 'user', content: `[DIRETRIZ DE STOP-LOSS]: ${reason} Não execute mais ferramentas. Entregue agora uma síntese objetiva do que foi concluído, do que falhou e do próximo passo verificável.` });
   const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, model, { tools: [], runId });
   const message = completion.choices?.[0]?.message;
   const content = redactSecrets(message?.content || '');
@@ -957,9 +1008,11 @@ async function recoverFromToolLoop({ runId, baseUrl, token, conversation, contro
   writeAudit('warn', 'agent_run_stoploss_recovered', { reason, usage: completion.usage || null }, traceId);
 }
 
+const MAX_AGENT_STEPS = 30;
+
 async function runAgent(runId, payload) {
   const controller = new AbortController();
-  const activeRun = { controller, child: null };
+  const activeRun = { runId, controller, child: null };
   activeRuns.set(runId, activeRun);
   const traceId = crypto.randomUUID();
   sendChatEvent({ runId, type: 'start', traceId });
@@ -1007,9 +1060,27 @@ async function runAgent(runId, payload) {
     let swappedToUncensored = false;
 
     while (!controller.signal.aborted) {
-      if (conversation.length > 16) {
-        const lastFew = conversation.slice(-6);
-        const intermediate = conversation.slice(1, -6);
+      if (step >= MAX_AGENT_STEPS) {
+        await recoverFromToolLoop({
+          runId,
+          baseUrl,
+          token,
+          conversation,
+          controller,
+          traceId,
+          model: activeModel,
+          reason: `Limite máximo de segurança de ${MAX_AGENT_STEPS} etapas consecutivas atingido.`
+        });
+        return;
+      }
+
+      if (conversation.length > 20) {
+        let cutIndex = Math.max(1, conversation.length - 8);
+        while (cutIndex < conversation.length - 1 && conversation[cutIndex].role === 'tool') {
+          cutIndex++;
+        }
+        const lastFew = conversation.slice(cutIndex);
+        const intermediate = conversation.slice(1, cutIndex);
         const toolsUsed = intermediate.filter((m) => m.role === 'tool').map((m) => m.name).filter(Boolean);
         const compactSummary = {
           role: 'user',
