@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('sensix', {
   getTelemetryEvents: (filter) => ipcRenderer.invoke('telemetry:get-events', filter),
   openLogsFolder: () => ipcRenderer.invoke('telemetry:open-dir'),
   clearTelemetry: () => ipcRenderer.invoke('telemetry:clear'),
+  getLearningStats: () => ipcRenderer.invoke('learning:get-stats'),
+  clearLearningLedger: () => ipcRenderer.invoke('learning:clear'),
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),

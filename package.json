@@ -1,13 +1,13 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.12",
-  "description": "SENSIX Agentic Desktop — In-memory Directives RAG, compressed context & session priming",
+  "version": "0.3.13",
+  "description": "SENSIX Agentic Desktop — Auto-Healing, Auto-Learning Ledger, ReAct Sanitizer & Refusal Hot-Swap",
   "main": "main.cjs",
   "private": true,
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check renderer/app.js"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs && node --check renderer/app.js"
   },
   "devDependencies": {
     "electron": "^39.2.6",
@@ -21,6 +21,7 @@
       "preload.cjs",
       "telemetry.cjs",
       "directives-rag.cjs",
+      "learning-ledger.cjs",
       "renderer/**/*",
       "README.md"
     ],
