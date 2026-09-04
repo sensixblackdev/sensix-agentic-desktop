@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.13",
-  "description": "SENSIX Agentic Desktop — Auto-Healing, Auto-Learning Ledger, ReAct Sanitizer & Refusal Hot-Swap",
+  "version": "0.3.14",
+  "description": "SENSIX Agentic Desktop — Anti-Leak Tool Guard, Bullet Call Parser, Proactive ReAct & Clean History",
   "main": "main.cjs",
   "private": true,
   "scripts": {
