@@ -31,6 +31,7 @@
               <span class="status-dot" id="status-dot" aria-hidden="true"></span>
               <div><strong id="connection-label">Gateway não configurado</strong><small id="connection-detail">Configure uma chave para começar</small></div>
             </div>
+            <button class="sidebar-link" type="button" data-action="open-telemetry"><span class="svg-icon" data-icon="activity" aria-hidden="true"></span><span>Telemetria & Logs</span><span id="telemetry-pill" class="telemetry-pill hidden">0</span></button>
             <button class="sidebar-link" type="button" data-action="open-settings"><span class="svg-icon" data-icon="settings" aria-hidden="true"></span><span>Configurações</span></button>
           </div>
         </aside>
@@ -118,6 +119,66 @@
         <div class="modal-actions"><button class="button secondary" type="button" data-action="close-confirm">Cancelar</button><button class="button danger" type="button" data-action="confirm-delete">Excluir conversa</button></div>
       </section>
     </div>
+    <div id="telemetry-modal" class="modal-backdrop hidden" role="presentation">
+      <section class="modal telemetry-modal" role="dialog" aria-modal="true" aria-labelledby="telemetry-title">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow">OBSERVABILIDADE INDUSTRIAL · RFC 7807</span>
+            <h2 id="telemetry-title">Telemetria & Logs de Modelos</h2>
+          </div>
+          <div class="modal-header-actions">
+            <button class="icon-button" type="button" data-action="refresh-telemetry" title="Recarregar telemetria"><span class="svg-icon" data-icon="refresh" aria-hidden="true"></span></button>
+            <button class="icon-button" type="button" data-action="close-telemetry" aria-label="Fechar telemetria"><span class="svg-icon" data-icon="close" aria-hidden="true"></span></button>
+          </div>
+        </div>
+
+        <div class="telemetry-metrics-grid">
+          <div class="telemetry-metric-card">
+            <span class="metric-label">Requisições</span>
+            <strong id="metric-requests" class="metric-value">0</strong>
+            <small class="metric-sub">Sessões & loops</small>
+          </div>
+          <div class="telemetry-metric-card" id="metric-card-errors">
+            <span class="metric-label">Erros de Modelo</span>
+            <strong id="metric-errors" class="metric-value">0</strong>
+            <small class="metric-sub" id="metric-errors-sub">0% falhas</small>
+          </div>
+          <div class="telemetry-metric-card">
+            <span class="metric-label">Tokens Totais</span>
+            <strong id="metric-tokens" class="metric-value">0</strong>
+            <small class="metric-sub">Entrada + Saída</small>
+          </div>
+          <div class="telemetry-metric-card">
+            <span class="metric-label">Latência Média</span>
+            <strong id="metric-latency" class="metric-value">0ms</strong>
+            <small class="metric-sub">Tempo de resposta</small>
+          </div>
+        </div>
+
+        <div class="telemetry-toolbar">
+          <div class="telemetry-filters">
+            <button type="button" class="filter-tab active" data-filter="all">Todos</button>
+            <button type="button" class="filter-tab" data-filter="errors">Erros de Modelos</button>
+            <button type="button" class="filter-tab" data-filter="prompts">Prompts & Tokens</button>
+            <button type="button" class="filter-tab" data-filter="tools">Ferramentas</button>
+          </div>
+          <div class="telemetry-actions">
+            <button class="button secondary compact-btn" type="button" data-action="open-logs-folder" title="Abrir pasta de logs no Explorer"><span class="svg-icon" data-icon="folder" aria-hidden="true"></span><span>Pasta de Logs</span></button>
+            <button class="button secondary compact-btn" type="button" data-action="clear-telemetry-logs" title="Limpar logs locais"><span class="svg-icon" data-icon="trash" aria-hidden="true"></span><span>Limpar</span></button>
+          </div>
+        </div>
+
+        <div id="telemetry-list" class="telemetry-list" role="list">
+          <div class="telemetry-empty">Carregando telemetria...</div>
+        </div>
+
+        <div class="telemetry-footer">
+          <span class="telemetry-path" id="telemetry-logs-path">Logs em: E:\axion\logs\sensix-desktop</span>
+          <button class="button secondary" type="button" data-action="close-telemetry">Fechar</button>
+        </div>
+      </section>
+    </div>
+
     <div id="project-modal" class="modal-backdrop hidden" role="presentation"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="project-title"><div class="modal-header"><div><span class="eyebrow">ORGANIZAÇÃO LOCAL</span><h2 id="project-title">Novo projeto</h2></div><button class="icon-button" type="button" data-action="close-project" aria-label="Fechar"><span class="svg-icon" data-icon="close" aria-hidden="true"></span></button></div><form id="project-form" class="settings-form"><label>Nome do projeto<input id="project-name-input" required maxlength="80" placeholder="Ex.: SENSIX Desktop" /></label><label>Pasta de trabalho<input id="project-folder-input" required placeholder="Escolha uma pasta" readonly /><button class="button secondary" type="button" data-action="choose-project-folder">Escolher pasta</button></label><p id="project-state" class="form-state"></p><div class="modal-actions"><button class="button secondary" type="button" data-action="close-project">Cancelar</button><button class="button primary" type="submit">Criar projeto</button></div></form></section></div>
     <script src="app.js"></script>
   </body>

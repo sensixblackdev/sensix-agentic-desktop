@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('sensix', {
     ipcRenderer.on('chat:event', handler);
     return () => ipcRenderer.removeListener('chat:event', handler);
   },
+  getTelemetryStats: () => ipcRenderer.invoke('telemetry:get-stats'),
+  getTelemetryEvents: (filter) => ipcRenderer.invoke('telemetry:get-events', filter),
+  openLogsFolder: () => ipcRenderer.invoke('telemetry:open-dir'),
+  clearTelemetry: () => ipcRenderer.invoke('telemetry:clear'),
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),

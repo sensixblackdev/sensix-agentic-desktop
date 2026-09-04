@@ -42,8 +42,19 @@
     todoBadge: document.getElementById('todo-badge'),
     todoList: document.getElementById('todo-list'),
     todoProgressFill: document.getElementById('todo-progress-fill'),
+    telemetryModal: document.getElementById('telemetry-modal'),
+    telemetryPill: document.getElementById('telemetry-pill'),
+    metricRequests: document.getElementById('metric-requests'),
+    metricErrors: document.getElementById('metric-errors'),
+    metricErrorsSub: document.getElementById('metric-errors-sub'),
+    metricCardErrors: document.getElementById('metric-card-errors'),
+    metricTokens: document.getElementById('metric-tokens'),
+    metricLatency: document.getElementById('metric-latency'),
+    telemetryList: document.getElementById('telemetry-list'),
+    telemetryLogsPath: document.getElementById('telemetry-logs-path'),
   };
   const icons = {
+    activity: '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8l1.2 1.9 2.2.4 1.8-1 1.7 1.7-1 1.8.4 2.2 1.9 1.2v2.4l-1.9 1.2-.4 2.2 1 1.8-1.7 1.7-1.8-1-2.2.4L12 20.2l-1.2-1.9-2.2-.4-1.8 1-1.7-1.7 1-1.8-.4-2.2-1.9-1.2v-2.4l1.9-1.2.4-2.2-1-1.8 1.7-1.7 1.8 1 2.2-.4L12 3.8z"/><circle cx="12" cy="12" r="3"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3L4 10"/><path d="M4 5v5h5"/><path d="M4 13a8 8 0 0 0 14.8 3L20 14"/><path d="M20 19v-5h-5"/></svg>',
@@ -363,6 +374,114 @@
     els.apiKeyInput.focus();
   }
   function hideSettings() { els.settingsModal.classList.add('hidden'); }
+
+  let activeTelemetryFilter = 'all';
+
+  async function updateTelemetryBadge() {
+    try {
+      const stats = await window.sensix.getTelemetryStats();
+      if (stats && typeof stats.modelErrors === 'number' && stats.modelErrors > 0) {
+        els.telemetryPill.textContent = `${stats.modelErrors} ${stats.modelErrors === 1 ? 'erro' : 'erros'}`;
+        els.telemetryPill.classList.remove('hidden');
+      } else {
+        els.telemetryPill.classList.add('hidden');
+      }
+    } catch {}
+  }
+
+  async function showTelemetry() {
+    els.telemetryModal.classList.remove('hidden');
+    await refreshTelemetry();
+  }
+
+  function hideTelemetry() {
+    els.telemetryModal.classList.add('hidden');
+  }
+
+  async function refreshTelemetry() {
+    try {
+      els.telemetryList.innerHTML = '<div class="telemetry-empty">Carregando telemetria...</div>';
+      const stats = await window.sensix.getTelemetryStats();
+      if (stats) {
+        els.metricRequests.textContent = stats.totalRequests || 0;
+        els.metricErrors.textContent = stats.modelErrors || 0;
+        els.metricTokens.textContent = (stats.totalTokens || 0).toLocaleString();
+        els.metricLatency.textContent = `${stats.avgLatencyMs || 0}ms`;
+        els.telemetryLogsPath.textContent = `Logs em: ${stats.logsDir || 'E:\\axion\\logs\\sensix-desktop'}`;
+
+        const errRatio = stats.totalRequests > 0 ? Math.round((stats.modelErrors / stats.totalRequests) * 100) : 0;
+        els.metricErrorsSub.textContent = `${errRatio}% taxa de erro`;
+        els.metricCardErrors.classList.toggle('has-errors', (stats.modelErrors || 0) > 0);
+      }
+
+      const events = await window.sensix.getTelemetryEvents({ filter: activeTelemetryFilter, limit: 80 });
+      renderTelemetryList(events);
+      await updateTelemetryBadge();
+    } catch (err) {
+      els.telemetryList.innerHTML = `<div class="telemetry-empty">Falha ao carregar telemetria: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function renderTelemetryList(events) {
+    if (!events || events.length === 0) {
+      els.telemetryList.innerHTML = '<div class="telemetry-empty">Nenhum evento registrado nesta categoria.</div>';
+      return;
+    }
+
+    els.telemetryList.innerHTML = events.map((ev) => {
+      const isError = ev.level === 'error' || ev.status >= 400 || ev.statusCode >= 400 || ev.type === 'model_request_error';
+      const isWarn = ev.level === 'warn' || ev.type?.includes('fallback');
+      const levelClass = isError ? 'level-error' : (isWarn ? 'level-warn' : 'level-info');
+      const badgeClass = isError ? 'badge-error' : (isWarn ? 'badge-warn' : 'badge-info');
+
+      const dateStr = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString('pt-BR') : '--:--:--';
+      const traceId = ev.traceId || ev.trace_id || '';
+      const shortTrace = traceId ? traceId.slice(0, 8) : '';
+      const model = ev.model || ev.data?.model || 'SENSIX Core';
+      const duration = typeof ev.durationMs === 'number' ? `${ev.durationMs}ms` : '';
+
+      let typeBadge = ev.type || 'evento';
+      if (ev.statusCode || ev.status) typeBadge = `HTTP ${ev.statusCode || ev.status}`;
+      else if (typeBadge === 'model_request_start') typeBadge = 'PROMPT START';
+      else if (typeBadge === 'model_request_success') typeBadge = 'INFERENCE OK';
+      else if (typeBadge === 'model_request_error') typeBadge = 'MODEL ERROR';
+      else if (typeBadge === 'model_tool_fallback_prompt') typeBadge = 'TOOL FALLBACK';
+
+      let summaryHtml = '';
+      if (ev.detail || ev.errorMessage || ev.data?.detail) {
+        const errorText = ev.detail || ev.errorMessage || ev.data?.detail;
+        summaryHtml = `<div class="telemetry-error-box">${escapeHtml(errorText)}</div>`;
+      } else if (ev.data?.lastUserMessageSnippet) {
+        summaryHtml = `<div class="telemetry-message"><strong>Prompt:</strong> ${escapeHtml(ev.data.lastUserMessageSnippet)}</div>`;
+      } else if (ev.data?.finishReason) {
+        summaryHtml = `<div class="telemetry-message">Conclusão: <code>${escapeHtml(ev.data.finishReason)}</code> · Tokens: ${ev.data.totalTokens || 0} (${ev.data.promptTokens || 0} prompt / ${ev.data.completionTokens || 0} completion)</div>`;
+      } else if (ev.data?.tool) {
+        summaryHtml = `<div class="telemetry-message">Ferramenta: <code>${escapeHtml(ev.data.tool)}</code> ${ev.data.ok ? '✓ Sucesso' : '✗ Falha'}</div>`;
+      }
+
+      const jsonStr = JSON.stringify(ev.rfc7807 || ev.data || ev, null, 2);
+
+      return `
+        <article class="telemetry-item ${levelClass}" data-trace-id="${escapeHtml(traceId)}">
+          <div class="telemetry-item-head">
+            <div class="telemetry-item-left">
+              <span class="telemetry-time">${dateStr}</span>
+              <span class="telemetry-badge ${badgeClass}">${escapeHtml(typeBadge)}</span>
+              <span class="telemetry-model-name">${escapeHtml(model)}</span>
+            </div>
+            <div class="telemetry-item-right">
+              ${duration ? `<span class="telemetry-duration">${duration}</span>` : ''}
+              ${traceId ? `<button type="button" class="telemetry-copy-trace" data-action="copy-trace" data-trace="${escapeHtml(traceId)}" title="Copiar Trace ID">${escapeHtml(shortTrace)} 📋</button>` : ''}
+            </div>
+          </div>
+          ${summaryHtml}
+          <button type="button" class="telemetry-details-toggle" data-action="toggle-telemetry-details">Ver detalhes (RFC 7807 / JSON)</button>
+          <pre class="telemetry-json-view hidden">${escapeHtml(jsonStr)}</pre>
+        </article>
+      `;
+    }).join('');
+  }
+
   function setRunStatus(message) { els.runStatus.textContent = message || ''; els.runStatus.dataset.active = message ? 'true' : 'false'; }
   function updateScrollAffordance() {
     const distance = els.chatScroll.scrollHeight - els.chatScroll.scrollTop - els.chatScroll.clientHeight;
@@ -752,6 +871,7 @@
       setRunStatus('');
       renderSessions();
       renderMessages();
+      updateTelemetryBadge();
     }
     if (event.type === 'cancelled') {
       assistant.liveStatus = null;
@@ -760,15 +880,18 @@
       setRunStatus('Execução interrompida.');
       persistSessions();
       renderMessages();
+      updateTelemetryBadge();
     }
     if (event.type === 'error') {
       assistant.liveStatus = null;
-      assistant.content += `\n\nFalha: ${event.message || 'o gateway retornou um erro.'}`;
+      const traceNote = event.traceId ? `\n\n> 🔍 **Protocolo RFC 7807**: \`${event.traceId.slice(0, 8)}\` · Detalhes registrados na aba **Telemetria & Logs**.` : '';
+      assistant.content += `\n\nFalha: ${event.message || 'o gateway retornou um erro.'}${traceNote}`;
       setSending(false);
       activeRunId = null;
       setRunStatus('Execução encerrada com erro.');
       persistSessions();
       renderMessages();
+      updateTelemetryBadge();
     }
   }
   function autoResize() { els.composerInput.style.height = 'auto'; els.composerInput.style.height = `${Math.min(els.composerInput.scrollHeight, 180)}px`; }
@@ -803,6 +926,40 @@
       }
     }
     if (action === 'new-session') newSession();
+    if (action === 'open-telemetry') await showTelemetry();
+    if (action === 'close-telemetry') hideTelemetry();
+    if (action === 'refresh-telemetry') await refreshTelemetry();
+    if (action === 'open-logs-folder') await window.sensix.openLogsFolder();
+    if (action === 'clear-telemetry-logs') {
+      await window.sensix.clearTelemetry();
+      await refreshTelemetry();
+    }
+    if (action === 'copy-trace') {
+      const trace = target.dataset.trace;
+      if (trace) {
+        try {
+          await navigator.clipboard.writeText(trace);
+          const orig = target.textContent;
+          target.textContent = 'Copiado! ✓';
+          setTimeout(() => { target.textContent = orig; }, 1500);
+        } catch {}
+      }
+    }
+    if (action === 'toggle-telemetry-details') {
+      const item = target.closest('.telemetry-item');
+      const jsonView = item?.querySelector('.telemetry-json-view');
+      if (jsonView) {
+        jsonView.classList.toggle('hidden');
+        target.textContent = jsonView.classList.contains('hidden') ? 'Ver detalhes (RFC 7807 / JSON)' : 'Ocultar detalhes';
+      }
+    }
+    const filterBtn = target.closest('.filter-tab');
+    if (filterBtn) {
+      document.querySelectorAll('.filter-tab').forEach((b) => b.classList.remove('active'));
+      filterBtn.classList.add('active');
+      activeTelemetryFilter = filterBtn.dataset.filter || 'all';
+      await refreshTelemetry();
+    }
     if (action === 'open-settings') showSettings();
     if (action === 'close-settings') hideSettings();
     if (action === 'clear-settings') await clearSettings();
@@ -895,9 +1052,11 @@
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); newSession(); }
     if (event.key === 'Escape' && !els.settingsModal.classList.contains('hidden')) hideSettings();
+    if (event.key === 'Escape' && !els.telemetryModal.classList.contains('hidden')) hideTelemetry();
     if (event.key === 'Escape' && !els.confirmModal.classList.contains('hidden')) closeConfirm();
   });
   els.settingsModal.addEventListener('click', (event) => { if (event.target === els.settingsModal) hideSettings(); });
+  els.telemetryModal.addEventListener('click', (event) => { if (event.target === els.telemetryModal) hideTelemetry(); });
   els.confirmModal.addEventListener('click', (event) => { if (event.target === els.confirmModal) closeConfirm(); });
 
   async function init() {
@@ -917,6 +1076,7 @@
     els.actionModeSelect.value = localStorage.getItem('sensix-action-mode') === 'full-access' ? 'full-access' : 'normal';
     const permissions = settings.permissions || {};
     els.permissionSummary.textContent = permissions.shell && permissions.filesWrite ? 'Shell + Coding' : 'Acesso limitado';
+    await updateTelemetryBadge();
     if (settings.configured) await refreshModels(); else { setConnection('idle', 'Configure uma chave para começar'); showSettings(); }
   }
   window.addEventListener('error', () => setRunStatus('O renderer encontrou um erro. Consulte o log de auditoria.'));

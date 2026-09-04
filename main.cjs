@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const telemetry = require('./telemetry.cjs');
 
 const DEFAULT_BASE_URL = process.env.SENSIX_API_BASE_URL || 'https://api.sensix.it.com/v1';
 const LEGACY_BASE_URL = 'http://174.78.228.101:40746/v1';
@@ -101,6 +102,7 @@ function redactSecrets(value) {
 
 function writeAudit(level, message, details = {}, traceId = crypto.randomUUID()) {
   try {
+    telemetry.recordTelemetry({ level, type: message, traceId, data: details });
     const file = auditPath();
     fs.mkdirSync(path.dirname(file), { recursive: true });
     if (fs.existsSync(file) && fs.statSync(file).size > 5 * 1024 * 1024) {
@@ -519,18 +521,185 @@ async function executeTool(name, args, activeRun) {
   throw new Error(`Ferramenta não autorizada: ${name}`);
 }
 
-async function requestAgentCompletion(baseUrl, token, messages, signal, traceId, model, { tools = TOOL_DEFINITIONS, toolChoice = 'auto' } = {}) {
-  const body = { model, messages, parallel_tool_calls: false, stream: false, temperature: 0.1, max_tokens: 1024 };
-  if (tools?.length) { body.tools = tools; body.tool_choice = toolChoice; }
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { ...requestHeaders(token, traceId, baseUrl), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
+async function requestAgentCompletion(baseUrl, token, messages, signal, traceId, model, { tools = TOOL_DEFINITIONS, toolChoice = 'auto', runId = null } = {}) {
+  const startMs = Date.now();
+  const promptChars = messages.reduce((acc, m) => acc + (typeof m?.content === 'string' ? m.content.length : 0), 0);
+  const lastUserMessage = messages.slice().reverse().find((m) => m?.role === 'user')?.content || '';
+  const promptSummary = {
+    messageCount: messages.length,
+    promptChars,
+    lastUserMessageSnippet: String(lastUserMessage).slice(0, 300),
+  };
+
+  telemetry.recordTelemetry({
+    level: 'info',
+    type: 'model_request_start',
+    traceId,
+    model,
+    runId,
+    data: {
+      baseUrl: redactSecrets(baseUrl),
+      toolsEnabled: Boolean(tools?.length),
+      toolsCount: tools?.length || 0,
+      ...promptSummary,
+    },
   });
-  const raw = await response.text();
-  if (!response.ok) throw new Error(`Falha no endpoint GPU (HTTP ${response.status}): ${raw.slice(0, 240)}`);
-  try { return JSON.parse(raw); } catch { throw new Error('O endpoint GPU retornou JSON inválido.'); }
+
+  const executeRequest = async (currentTools, currentMessages = messages) => {
+    const body = { model, messages: currentMessages, parallel_tool_calls: false, stream: false, temperature: 0.1, max_tokens: 1024 };
+    if (currentTools?.length) { body.tools = currentTools; body.tool_choice = toolChoice; }
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { ...requestHeaders(token, traceId, baseUrl), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
+    });
+    const raw = await response.text();
+    return { response, raw };
+  };
+
+  let reqResult;
+  let usedTools = Boolean(tools?.length);
+  try {
+    reqResult = await executeRequest(usedTools ? tools : null);
+  } catch (netErr) {
+    telemetry.recordModelError({
+      traceId,
+      model,
+      baseUrl,
+      statusCode: 0,
+      errorMessage: netErr.message || 'Erro de conexão ou timeout com o modelo',
+      rawResponse: null,
+      promptSummary,
+      messages: redactSecrets(JSON.stringify(messages.slice(-3))),
+      retryAttempted: false,
+      retrySuccess: false,
+    });
+    throw netErr;
+  }
+
+  const { response, raw } = reqResult;
+  const durationMs = Date.now() - startMs;
+
+  if (!response.ok) {
+    const isToolIssue = usedTools && (
+      (response.status === 404 && /support tool use|tool/i.test(raw)) ||
+      (response.status === 400 && /tool|function/i.test(raw))
+    );
+
+    telemetry.recordModelError({
+      traceId,
+      model,
+      baseUrl,
+      statusCode: response.status,
+      errorMessage: `Falha no endpoint de inferência (HTTP ${response.status})`,
+      rawResponse: raw,
+      promptSummary,
+      messages: redactSecrets(JSON.stringify(messages.slice(-3))),
+      retryAttempted: isToolIssue,
+      retrySuccess: false,
+    });
+
+    if (isToolIssue) {
+      if (runId) {
+        sendChatEvent({
+          runId,
+          type: 'synthesizing',
+          message: 'Endpoint sem suporte nativo a tools na API. Ativando modo de execução ReAct via prompt...',
+        });
+      }
+      telemetry.recordTelemetry({
+        level: 'warn',
+        type: 'model_tool_fallback_prompt',
+        traceId,
+        model,
+        runId,
+        data: { reason: 'No endpoints found that support tool use. Retrying with prompt-based tool definitions.' },
+      });
+
+      const toolDocs = TOOL_DEFINITIONS.map((t) => `- ${t.function.name}: ${t.function.description} | Params: ${JSON.stringify(t.function.parameters.properties)}`).join('\n');
+      const fallbackMessages = [
+        ...messages,
+        {
+          role: 'system',
+          content: `[MODO FERRAMENTAS VIA PROMPT ATIVADO]: Este endpoint não aceita o parâmetro nativo 'tools'.\nPara invocar ferramentas, você DEVE responder obrigatoriamente com um bloco JSON no seguinte formato:\n\`\`\`json\n{\n  "name": "nome_da_ferramenta",\n  "arguments": { ... }\n}\n\`\`\`\nFerramentas disponíveis:\n${toolDocs}`,
+        },
+      ];
+
+      try {
+        const fallbackResult = await executeRequest(null, fallbackMessages);
+        if (fallbackResult.response.ok) {
+          const parsedFallback = JSON.parse(fallbackResult.raw);
+          telemetry.recordTelemetry({
+            level: 'info',
+            type: 'model_tool_fallback_success',
+            traceId,
+            model,
+            runId,
+            durationMs: Date.now() - startMs,
+            data: { finishReason: parsedFallback.choices?.[0]?.finish_reason || 'stop' },
+          });
+          return parsedFallback;
+        }
+      } catch (fallbackErr) {
+        telemetry.recordModelError({
+          traceId,
+          model,
+          baseUrl,
+          statusCode: 500,
+          errorMessage: `Fallback de ferramentas via prompt também falhou: ${fallbackErr.message}`,
+          rawResponse: null,
+          promptSummary,
+          messages: null,
+          retryAttempted: true,
+          retrySuccess: false,
+        });
+      }
+    }
+
+    throw new Error(`Falha no endpoint GPU (HTTP ${response.status}): ${raw.slice(0, 240)} [Protocolo: ${traceId.slice(0, 8)}]`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    telemetry.recordModelError({
+      traceId,
+      model,
+      baseUrl,
+      statusCode: 200,
+      errorMessage: 'O endpoint GPU retornou JSON inválido',
+      rawResponse: raw.slice(0, 500),
+      promptSummary,
+      messages: redactSecrets(JSON.stringify(messages.slice(-3))),
+      retryAttempted: false,
+      retrySuccess: false,
+    });
+    throw new Error('O endpoint GPU retornou JSON inválido.');
+  }
+
+  const usage = parsed.usage || null;
+  const choice = parsed.choices?.[0];
+  telemetry.recordTelemetry({
+    level: 'info',
+    type: 'model_request_success',
+    traceId,
+    model,
+    runId,
+    durationMs,
+    data: {
+      status: 200,
+      promptTokens: usage?.prompt_tokens || 0,
+      completionTokens: usage?.completion_tokens || 0,
+      totalTokens: usage?.total_tokens || 0,
+      finishReason: choice?.finish_reason || 'stop',
+      hasToolCalls: Boolean(choice?.message?.tool_calls?.length),
+      toolCallsCount: choice?.message?.tool_calls?.length || 0,
+    },
+  });
+
+  return parsed;
 }
 
 function describeTool(name, args) {
@@ -566,7 +735,7 @@ function toolCallSignature(name, args) {
 async function recoverFromToolLoop({ runId, baseUrl, token, conversation, controller, traceId, model, reason }) {
   sendChatEvent({ runId, type: 'synthesizing', message: 'Stop-loss acionado: consolidando o resultado sem novas ferramentas...' });
   conversation.push({ role: 'system', content: `STOP-LOSS: ${reason} Não execute mais ferramentas. Entregue agora uma síntese objetiva do que foi concluído, do que falhou e do próximo passo verificável.` });
-  const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, model, { tools: [] });
+  const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, model, { tools: [], runId });
   const message = completion.choices?.[0]?.message;
   const content = redactSecrets(message?.content || '');
   if (!content) throw new Error(`Stop-loss: ${reason}. O modelo não retornou síntese final.`);
@@ -609,7 +778,7 @@ async function runAgent(runId, payload) {
       }
       const stepLabel = step === 0 ? `Consultando ${payload.model}...` : `Etapa ${step + 1}: analisando próximo passo...`;
       sendChatEvent({ runId, type: 'synthesizing', message: stepLabel });
-      const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, payload.model, { tools: payload.mode === 'plan' ? [] : TOOL_DEFINITIONS });
+      const completion = await requestAgentCompletion(baseUrl, token, conversation, controller.signal, traceId, payload.model, { tools: payload.mode === 'plan' ? [] : TOOL_DEFINITIONS, runId });
       const message = completion.choices?.[0]?.message;
       if (!message) throw new Error('O modelo não retornou uma mensagem válida.');
       let toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
@@ -809,6 +978,15 @@ ipcMain.handle('project:init-rules', async (_event, folderPath = '.') => {
 });
 ipcMain.handle('project:get-rules', async (_event, folderPath = '.') => loadWorkspaceDirectives(folderPath));
 
+ipcMain.handle('telemetry:get-stats', () => telemetry.getTelemetryStats());
+ipcMain.handle('telemetry:get-events', (_event, filter) => telemetry.getTelemetryEvents(filter));
+ipcMain.handle('telemetry:open-dir', () => {
+  const dir = telemetry.getLogsDir();
+  shell.openPath(dir);
+  return { ok: true, path: dir };
+});
+ipcMain.handle('telemetry:clear', () => telemetry.clearTelemetry());
+
 ipcMain.handle('window:minimize', () => mainWindow?.minimize());
 ipcMain.handle('window:maximize', () => {
   if (!mainWindow) return false;
@@ -819,5 +997,10 @@ ipcMain.handle('window:close', () => mainWindow?.close());
 
 process.on('uncaughtException', (error) => writeAudit('error', 'uncaught_exception', { error: safeErrorMessage(error) }));
 process.on('unhandledRejection', (error) => writeAudit('error', 'unhandled_rejection', { error: safeErrorMessage(error) }));
-app.whenReady().then(() => { createWindow(); app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); }); });
+app.whenReady().then(() => {
+  telemetry.initTelemetry(app);
+  createWindow();
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+

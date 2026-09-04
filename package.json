@@ -1,13 +1,13 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.10",
-  "description": "SENSIX Agentic Desktop — Active auto-healing loop guard, PowerShell syntax normalization & uninterrupted recovery",
+  "version": "0.3.11",
+  "description": "SENSIX Agentic Desktop — Isomorphic RFC 7807 telemetry, model error capture & resilient tool fallback",
   "main": "main.cjs",
   "private": true,
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer/app.js"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check renderer/app.js"
   },
   "devDependencies": {
     "electron": "^39.2.6",
