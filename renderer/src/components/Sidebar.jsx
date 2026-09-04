@@ -1,5 +1,20 @@
 import React from 'react';
-import { Plus, Sparkles, Archive, Trash2, Activity, Settings, FolderKanban } from 'lucide-react';
+import {
+  Plus,
+  Sparkles,
+  Archive,
+  Trash2,
+  Activity,
+  Settings,
+  FolderKanban,
+  FileCode,
+  Brain,
+  ShieldCheck,
+  Cpu,
+  Terminal,
+  Command,
+  Keyboard
+} from 'lucide-react';
 
 export function Sidebar({
   sessions = [],
@@ -14,6 +29,8 @@ export function Sidebar({
   onNewProject,
   onOpenSettings,
   onOpenTelemetry,
+  onOpenPalette,
+  onOpenShortcuts,
   telemetryErrors = 0,
   connectionStatus = { state: 'idle', label: 'Gateway não configurado', detail: 'Configure uma chave' },
   activeTab = 'chat',
@@ -68,6 +85,46 @@ export function Sidebar({
           >
             <Sparkles size={14} />
             <span>Chat Agêntico</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'files' ? 'active' : ''}`}
+            onClick={() => onSelectTab('files')}
+          >
+            <FileCode size={14} />
+            <span>Arquivos & Código</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'learning' ? 'active' : ''}`}
+            onClick={() => onSelectTab('learning')}
+          >
+            <Brain size={14} />
+            <span>Auto-Learning</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'security' ? 'active' : ''}`}
+            onClick={() => onSelectTab('security')}
+          >
+            <ShieldCheck size={14} />
+            <span>Segurança & Guardrails</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'routing' ? 'active' : ''}`}
+            onClick={() => onSelectTab('routing')}
+          >
+            <Cpu size={14} />
+            <span>Roteamento Tiers</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'terminal' ? 'active' : ''}`}
+            onClick={() => onSelectTab('terminal')}
+          >
+            <Terminal size={14} />
+            <span>Terminal Seguro</span>
           </button>
           <button
             type="button"
@@ -142,6 +199,27 @@ export function Sidebar({
           {telemetryErrors > 0 && (
             <span className="telemetry-pill">{telemetryErrors}</span>
           )}
+        </button>
+
+        <button
+          className="sidebar-link-btn"
+          type="button"
+          onClick={onOpenPalette}
+          aria-label="Abrir paleta de comandos"
+        >
+          <Command size={15} strokeWidth={1.8} />
+          <span>Comandos</span>
+          <kbd className="sidebar-kbd">Ctrl K</kbd>
+        </button>
+
+        <button
+          className="sidebar-link-btn"
+          type="button"
+          onClick={onOpenShortcuts}
+          aria-label="Atalhos de teclado"
+        >
+          <Keyboard size={15} strokeWidth={1.8} />
+          <span>Atalhos</span>
         </button>
 
         <button

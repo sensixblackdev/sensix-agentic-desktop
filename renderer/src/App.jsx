@@ -1,12 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { WindowBar } from './components/WindowBar';
 import { Sidebar } from './components/Sidebar';
+
+// Pages
 import { ChatPage } from './pages/ChatPage';
+import { FileExplorerPage } from './pages/FileExplorerPage';
+import { AutoLearningLedgerPage } from './pages/AutoLearningLedgerPage';
+import { SecurityAuditPage } from './pages/SecurityAuditPage';
+import { InferenceRoutingPage } from './pages/InferenceRoutingPage';
+import { TerminalPage } from './pages/TerminalPage';
 import { TelemetryPage } from './pages/TelemetryPage';
 import { WorkspacePage } from './pages/WorkspacePage';
+
+// Modals & Floating Components
 import { SettingsModal } from './components/SettingsModal';
 import { ProjectModal } from './components/ProjectModal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { CommandPalette } from './components/CommandPalette';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { PromptTemplatesModal } from './components/PromptTemplatesModal';
 import { ToastContainer } from './components/ToastContainer';
 import { ToastProvider, useToast } from './context/ToastContext';
 
@@ -23,10 +35,13 @@ function AppContent() {
   const [runMode, setRunMode] = useState('normal');
   const [actionMode, setActionMode] = useState('guarded');
 
-  // Modals
+  // Modals & Drawers
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [settingsData, setSettingsData] = useState({});
   const { addToast } = useToast();
 
@@ -50,6 +65,16 @@ function AppContent() {
       }
     }
     initialize();
+
+    // Global shortcut Ctrl+K
+    const handleGlobalKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
   const currentSession = sessions.find((s) => s.id === currentSessionId) || sessions[0];
@@ -120,6 +145,8 @@ function AppContent() {
           onNewProject={() => setProjectModalOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenTelemetry={() => setActiveTab('telemetry')}
+          onOpenPalette={() => setPaletteOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
           activeTab={activeTab}
           onSelectTab={setActiveTab}
         />
@@ -139,6 +166,18 @@ function AppContent() {
             />
           )}
 
+          {activeTab === 'files' && <FileExplorerPage session={currentSession} />}
+
+          {activeTab === 'learning' && <AutoLearningLedgerPage />}
+
+          {activeTab === 'security' && <SecurityAuditPage />}
+
+          {activeTab === 'routing' && (
+            <InferenceRoutingPage models={models} selectedModel={selectedModel} />
+          )}
+
+          {activeTab === 'terminal' && <TerminalPage />}
+
           {activeTab === 'telemetry' && <TelemetryPage />}
 
           {activeTab === 'workspace' && <WorkspacePage session={currentSession} />}
@@ -146,6 +185,33 @@ function AppContent() {
       </div>
 
       <ToastContainer />
+
+      <CommandPalette
+        isOpen={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={(tab) => {
+          setActiveTab(tab);
+          setPaletteOpen(false);
+        }}
+        onOpenSettings={() => {
+          setSettingsOpen(true);
+          setPaletteOpen(false);
+        }}
+      />
+
+      <KeyboardShortcutsModal
+        isOpen={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
+
+      <PromptTemplatesModal
+        isOpen={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        onSelectTemplate={(prompt) => {
+          // Send to chat
+          setActiveTab('chat');
+        }}
+      />
 
       <SettingsModal
         isOpen={settingsOpen}
