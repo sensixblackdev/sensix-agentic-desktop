@@ -180,34 +180,131 @@
     }
   }
 
+  function formatInline(text) {
+    return escapeHtml(text)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  }
+
   function renderMarkdown(text) {
     const lines = String(text || '').split(/\r?\n/);
     const output = [];
     let inCode = false;
+    let codeLang = '';
     let codeLines = [];
+    let listType = null;
+    let listItems = [];
     let paragraph = [];
+
     const flushParagraph = () => {
       if (!paragraph.length) return;
       const content = paragraph.join('\n').trim();
-      if (content) output.push(`<p>${escapeHtml(content).replace(/`([^`]+)`/g, '<code>$1</code>')}</p>`);
+      if (content) output.push(`<p>${formatInline(content)}</p>`);
       paragraph = [];
     };
+
+    const flushList = () => {
+      if (!listType || !listItems.length) return;
+      const tag = listType;
+      const inner = listItems.map((item) => `<li>${formatInline(item)}</li>`).join('');
+      output.push(`<${tag}>${inner}</${tag}>`);
+      listType = null;
+      listItems = [];
+    };
+
     lines.forEach((line) => {
-      if (line.trim().startsWith('```')) {
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('```')) {
+        flushParagraph();
+        flushList();
         if (inCode) {
-          output.push(`<details class="artifact-block"><summary>Código · ${codeLines.length} linhas</summary><pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre></details>`);
+          const rawCode = codeLines.join('\n');
+          const langLabel = escapeHtml(codeLang || 'código');
+          output.push(
+            `<div class="code-block">` +
+              `<div class="code-header">` +
+                `<span class="code-lang">${langLabel}</span>` +
+                `<button class="code-copy-btn" type="button" data-action="copy-code">Copiar</button>` +
+              `</div>` +
+              `<pre><code>${escapeHtml(rawCode)}</code></pre>` +
+            `</div>`
+          );
           codeLines = [];
-        } else flushParagraph();
+          codeLang = '';
+        } else {
+          codeLang = trimmed.slice(3).trim();
+        }
         inCode = !inCode;
         return;
       }
-      if (inCode) codeLines.push(line);
-      else if (/^#{1,3}\s+/.test(line.trim())) { flushParagraph(); const heading = line.trim().match(/^(#{1,3})\s+(.+)$/); output.push(`<h${heading[1].length}>${escapeHtml(heading[2])}</h${heading[1].length}>`); }
-      else if (!line.trim()) flushParagraph();
-      else paragraph.push(line);
+
+      if (inCode) {
+        codeLines.push(line);
+        return;
+      }
+
+      if (!trimmed) {
+        flushParagraph();
+        flushList();
+        return;
+      }
+
+      if (/^#{1,3}\s+/.test(trimmed)) {
+        flushParagraph();
+        flushList();
+        const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        const level = headingMatch[1].length;
+        const headingText = headingMatch[2];
+        const isDelivery = /entrega|conclu|final/i.test(headingText);
+        const extraClass = isDelivery ? ' class="delivery-heading"' : '';
+        output.push(`<h${level}${extraClass}>${formatInline(headingText)}</h${level}>`);
+        return;
+      }
+
+      const ulMatch = line.match(/^(\s*)[-*]\s+(.+)$/);
+      if (ulMatch) {
+        flushParagraph();
+        if (listType !== 'ul') flushList();
+        listType = 'ul';
+        listItems.push(ulMatch[2]);
+        return;
+      }
+
+      const olMatch = line.match(/^(\s*)\d+\.\s+(.+)$/);
+      if (olMatch) {
+        flushParagraph();
+        if (listType !== 'ol') flushList();
+        listType = 'ol';
+        listItems.push(olMatch[2]);
+        return;
+      }
+
+      if (listType) {
+        flushList();
+      }
+
+      paragraph.push(line);
     });
-    if (inCode) output.push(`<details class="artifact-block"><summary>Código · ${codeLines.length} linhas</summary><pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre></details>`);
+
+    if (inCode) {
+      const rawCode = codeLines.join('\n');
+      const langLabel = escapeHtml(codeLang || 'código');
+      output.push(
+        `<div class="code-block">` +
+          `<div class="code-header">` +
+            `<span class="code-lang">${langLabel}</span>` +
+            `<button class="code-copy-btn" type="button" data-action="copy-code">Copiar</button>` +
+          `</div>` +
+          `<pre><code>${escapeHtml(rawCode)}</code></pre>` +
+        `</div>`
+      );
+    }
+
     flushParagraph();
+    flushList();
+
     return output.join('') || '<p></p>';
   }
   function renderMessages() {
@@ -625,6 +722,25 @@
     const target = event.target.closest('[data-action]');
     if (!target) return;
     const action = target.dataset.action;
+    if (action === 'copy-code') {
+      const codeBlock = target.closest('.code-block');
+      const codeEl = codeBlock?.querySelector('pre code');
+      if (codeEl) {
+        try {
+          await navigator.clipboard.writeText(codeEl.textContent || '');
+          const original = target.textContent;
+          target.textContent = 'Copiado!';
+          target.classList.add('copied');
+          setTimeout(() => {
+            target.textContent = original;
+            target.classList.remove('copied');
+          }, 2000);
+        } catch {
+          target.textContent = 'Erro ao copiar';
+        }
+      }
+      return;
+    }
     if (action === 'toggle-todo-list') {
       if (els.todoList) {
         els.todoList.classList.toggle('collapsed');

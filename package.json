@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.7",
-  "description": "SENSIX Agentic Desktop — Fix baseUrl scoping, Claude Code architecture & uncensored coding models",
+  "version": "0.3.8",
+  "description": "SENSIX Agentic Desktop — Professional code blocks, copy actions, delivery completion protocol & non-intrusive scroll UI",
   "main": "main.cjs",
   "private": true,
   "scripts": {
