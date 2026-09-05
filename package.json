@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.23",
-  "description": "SENSIX Agentic Desktop — 100% Bug-Hunter Hardened: Fuzzing, Traversal Protection, Zero Console Errors & State Recovery",
+  "version": "0.3.24",
+  "description": "SENSIX Agentic Desktop — Real-Time Agentic IDE, Code Engine, Inline AI Assistant (Ctrl+I), High-Performance Models & Visual Diff Review",
   "main": "main.cjs",
   "private": true,
   "scripts": {

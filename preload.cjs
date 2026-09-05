@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('sensix', {
   executeCommand: (cmd) => ipcRenderer.invoke('shell:execute', cmd),
   executeShellCommand: (cmd) => ipcRenderer.invoke('shell:execute', cmd),
   previewFile: (filePath) => ipcRenderer.invoke('file:read-preview', filePath),
+  writeFile: (filePath, content) => ipcRenderer.invoke('file:write', { filePath, content }),
+  saveFile: (filePath, content) => ipcRenderer.invoke('file:write', { filePath, content }),
+  aiEditCode: (payload) => ipcRenderer.invoke('ide:ai-edit', payload),
   getLedgerEntries: () => ipcRenderer.invoke('learning:get-entries'),
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),

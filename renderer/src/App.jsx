@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar';
 
 // Pages
 import { ChatPage } from './pages/ChatPage';
+import { IDEPage } from './pages/IDEPage';
 import { FileExplorerPage } from './pages/FileExplorerPage';
 import { AutoLearningLedgerPage } from './pages/AutoLearningLedgerPage';
 import { SecurityAuditPage } from './pages/SecurityAuditPage';
@@ -187,7 +188,14 @@ function AppContent() {
             />
           )}
 
-          {activeTab === 'files' && <FileExplorerPage session={currentSession} />}
+          {activeTab === 'files' && (
+            <IDEPage
+              session={currentSession}
+              models={models}
+              selectedModel={selectedModel}
+              onSelectModel={setSelectedModel}
+            />
+          )}
 
           {activeTab === 'learning' && <AutoLearningLedgerPage />}
 

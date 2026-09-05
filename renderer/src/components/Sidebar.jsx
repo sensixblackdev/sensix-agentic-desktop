@@ -8,6 +8,7 @@ import {
   Settings,
   FolderKanban,
   FileCode,
+  Code2,
   Brain,
   ShieldCheck,
   Cpu,
@@ -170,8 +171,8 @@ export function Sidebar({
             className={`nav-tab-btn ${activeTab === 'files' ? 'active' : ''}`}
             onClick={() => onSelectTab('files')}
           >
-            <FileCode size={14} />
-            <span>Arquivos & Código</span>
+            <Code2 size={14} />
+            <span>IDE & Editor</span>
           </button>
           <button
             type="button"

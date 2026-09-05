@@ -1449,6 +1449,102 @@ ipcMain.handle('file:read-preview', async (_event, filePath) => {
     return { ok: true, path: targetFile, name: path.basename(targetFile), isText: true, content, size: stats.size };
   } catch (error) { return { ok: false, error: error.message }; }
 });
+ipcMain.handle('file:write', async (_event, payload) => {
+  try {
+    const filePath = typeof payload === 'string' ? payload : payload?.filePath;
+    const content = typeof payload === 'string' ? '' : (payload?.content ?? '');
+    if (!filePath || typeof filePath !== 'string') return { ok: false, error: 'Caminho do arquivo não fornecido ou inválido.' };
+    const targetFile = ensureWorkspacePath(filePath);
+    if (isSecretPath(targetFile)) return { ok: false, error: 'Modificação de arquivos de ambiente (.env) é bloqueada por segurança.' };
+    if (typeof content !== 'string') return { ok: false, error: 'Conteúdo deve ser texto.' };
+    if (Buffer.byteLength(content, 'utf8') > 10 * 1024 * 1024) return { ok: false, error: 'Arquivo muito grande (>10MB).' };
+
+    safeAtomicWrite(targetFile, content);
+    writeAudit('info', 'ide_file_saved', { path: relativeWorkspacePath(targetFile), size: Buffer.byteLength(content, 'utf8') });
+    return {
+      ok: true,
+      path: targetFile,
+      relativePath: relativeWorkspacePath(targetFile),
+      name: path.basename(targetFile),
+      size: Buffer.byteLength(content, 'utf8')
+    };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+ipcMain.handle('ide:ai-edit', async (_event, payload) => {
+  const { baseUrl, token } = readStoredCredentials();
+  const filePath = String(payload?.filePath || 'snippet.js').trim();
+  const currentCode = String(payload?.currentCode ?? '');
+  const instruction = String(payload?.instruction || '').trim();
+  const model = String(payload?.model || 'cognitivecomputations/dolphin-mistral-24b-venice-edition').trim();
+  const selection = payload?.selection ? String(payload.selection) : null;
+
+  if (!instruction) return { ok: false, error: 'Instrução para a IA é obrigatória.' };
+
+  const systemPrompt = [
+    'Você é o SENSIX IDE AI Engine — um motor ultraveloz e cirúrgico de edição, geração e refatoração de código de alta performance.',
+    'DIRETRIZES ESTREITAS:',
+    '1. Responda EXCLUSIVAMENTE com o código final resultante, envolvido em um único bloco markdown com a linguagem correspondente (ex: ```javascript ... ```).',
+    '2. NÃO inclua saudações, introduções, explicações verbais nem despedidas.',
+    '3. Preserve estilos de código, convenções do projeto e mantenha código limpo e sem comentários excessivos.',
+    '4. Se o usuário pedir para editar apenas um trecho selecionado, substitua o trecho preservando a semântica do restante do arquivo.'
+  ].join('\n');
+
+  const userContent = [
+    `Arquivo: ${filePath}`,
+    `Instrução de alteração: ${instruction}`,
+    selection ? `Trecho selecionado especificamente:\n\`\`\`\n${selection}\n\`\`\`` : '',
+    'Código Atual Completo:',
+    '```',
+    currentCode,
+    '```'
+  ].filter(Boolean).join('\n\n');
+
+  const traceId = crypto.randomUUID();
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { ...requestHeaders(token, traceId, baseUrl), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.15,
+        max_tokens: 8192
+      }),
+      signal: AbortSignal.timeout(60000)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return { ok: false, error: `Falha na inferência da IA (HTTP ${response.status}): ${errText.slice(0, 200)}` };
+    }
+
+    const data = await response.json();
+    const rawOutput = data?.choices?.[0]?.message?.content || '';
+
+    let cleanCode = rawOutput.trim();
+    const codeBlockMatch = cleanCode.match(/^```[a-zA-Z0-9_-]*\r?\n([\s\S]*?)\r?\n```$/);
+    if (codeBlockMatch) {
+      cleanCode = codeBlockMatch[1];
+    } else {
+      cleanCode = cleanCode.replace(/^```[a-zA-Z0-9_-]*\r?\n/, '').replace(/\r?\n```$/, '');
+    }
+
+    return {
+      ok: true,
+      originalCode: currentCode,
+      modifiedCode: cleanCode,
+      modelUsed: model,
+      instruction
+    };
+  } catch (err) {
+    return { ok: false, error: `Falha na conexão com o modelo de IA: ${err.message}` };
+  }
+});
 ipcMain.handle('sessions:load', () => { try { const file = sessionsPath(); if (!fs.existsSync(file)) return []; const parsed = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(parsed) ? parsed : []; } catch { return []; } });
 ipcMain.handle('sessions:save', (_event, sessions) => {
   if (!Array.isArray(sessions)) return { ok: false, error: 'Histórico inválido.' };
