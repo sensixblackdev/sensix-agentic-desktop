@@ -841,6 +841,102 @@ async function executeTool(name, args, activeRun) {
   throw new Error(`Ferramenta não autorizada: ${name}`);
 }
 
+function ensureValidToolMessageOrder(messages) {
+  if (!Array.isArray(messages)) return [];
+  const result = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (!msg) continue;
+
+    // Se for mensagem de assistente com tool_calls
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      const validCalls = msg.tool_calls.map((c, idx) => {
+        const id = (typeof c?.id === 'string' && c.id.trim()) ? c.id.trim() : `call_${crypto.randomUUID().slice(0, 8)}_${idx}`;
+        return { ...c, id };
+      });
+
+      const assistantMsg = {
+        ...msg,
+        tool_calls: validCalls,
+      };
+      result.push(assistantMsg);
+
+      const callIds = new Set(validCalls.map((c) => c.id));
+      const answeredCallIds = new Set();
+      let j = i + 1;
+
+      while (j < messages.length && messages[j]?.role === 'tool') {
+        const toolMsg = messages[j];
+        let toolCallId = toolMsg.tool_call_id;
+
+        if (callIds.has(toolCallId)) {
+          answeredCallIds.add(toolCallId);
+          result.push(toolMsg);
+        } else if (!toolCallId) {
+          const unassigned = validCalls.find((c) => !answeredCallIds.has(c.id));
+          if (unassigned) {
+            answeredCallIds.add(unassigned.id);
+            result.push({ ...toolMsg, tool_call_id: unassigned.id });
+          }
+        }
+        j++;
+      }
+
+      // Se algum tool_call ficou sem resposta, inserir resposta sintética para conformidade estrita da API
+      for (const call of validCalls) {
+        if (!answeredCallIds.has(call.id)) {
+          result.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            name: call.function?.name || 'tool',
+            content: JSON.stringify({ ok: false, error: 'Operação de ferramenta concluída ou interrompida.' })
+          });
+        }
+      }
+
+      i = j - 1;
+      continue;
+    }
+
+    // Se for mensagem 'tool' solta (sem assistente anterior correspondente)
+    if (msg.role === 'tool') {
+      result.push({
+        role: 'user',
+        content: `[RESULTADO]: ${msg.content || ''}`
+      });
+      continue;
+    }
+
+    // Limpar tool_calls vazios se existirem
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length === 0) {
+      const cleanMsg = { ...msg };
+      delete cleanMsg.tool_calls;
+      result.push(cleanMsg);
+      continue;
+    }
+
+    result.push(msg);
+  }
+
+  // Se a última mensagem for um assistente com tool_calls não respondidas
+  if (result.length > 0) {
+    const last = result[result.length - 1];
+    if (last.role === 'assistant' && Array.isArray(last.tool_calls) && last.tool_calls.length > 0) {
+      for (const call of last.tool_calls) {
+        result.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          name: call.function?.name || 'tool',
+          content: JSON.stringify({ ok: false, error: 'Aguardando execução...' })
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
 async function requestAgentCompletion(baseUrl, token, messages, signal, traceId, model, { tools = TOOL_DEFINITIONS, toolChoice = 'auto', runId = null } = {}) {
   const startMs = Date.now();
   const promptChars = messages.reduce((acc, m) => acc + (typeof m?.content === 'string' ? m.content.length : 0), 0);
@@ -867,7 +963,8 @@ async function requestAgentCompletion(baseUrl, token, messages, signal, traceId,
 
   const executeRequest = async (currentTools, currentMessages = messages) => {
     const maxTokens = /devstral|codestral|qwen.*32b/i.test(model) ? 8192 : 4096;
-    const body = { model, messages: currentMessages, parallel_tool_calls: false, stream: false, temperature: 0.1, max_tokens: maxTokens };
+    const sanitizedMessages = ensureValidToolMessageOrder(currentMessages);
+    const body = { model, messages: sanitizedMessages, parallel_tool_calls: false, stream: false, temperature: 0.1, max_tokens: maxTokens };
     if (currentTools?.length) { body.tools = currentTools; body.tool_choice = toolChoice; }
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -926,7 +1023,7 @@ async function requestAgentCompletion(baseUrl, token, messages, signal, traceId,
   if (!response.ok) {
     const isToolIssue = usedTools && (
       (response.status === 404 && /support tool use|tool/i.test(raw)) ||
-      (response.status === 400 && /tool|function/i.test(raw))
+      (response.status === 400 && /tool|function/i.test(raw) && !/invalidrequestmessage_order|function calls and responses/i.test(raw))
     );
 
     if (isToolIssue) {
@@ -1329,13 +1426,17 @@ async function runAgent(runId, payload) {
           return;
         }
       }
-      conversation.push({ role: 'assistant', content: message.content || null, tool_calls: toolCalls });
+      const normalizedToolCalls = toolCalls.map((call, idx) => ({
+        ...call,
+        id: (typeof call?.id === 'string' && call.id.trim()) ? call.id.trim() : `call_${crypto.randomUUID().slice(0, 8)}_${idx}`
+      }));
+      conversation.push({ role: 'assistant', content: message.content || null, tool_calls: normalizedToolCalls });
       let stopLossReason = '';
 
       async function executeSingleToolCall(call) {
         const name = String(call?.function?.name || 'unknown');
         const args = parseToolArguments(call?.function?.arguments);
-        const toolId = call.id || crypto.randomUUID();
+        const toolId = call.id;
         sendChatEvent({ runId, type: 'tool_start', toolId, tool: name, description: describeTool(name, args) });
         const startedAt = Date.now();
         let result;
@@ -1376,7 +1477,7 @@ async function runAgent(runId, payload) {
       let currentBatch = [];
       let currentIsReadOnly = false;
 
-      for (const call of toolCalls) {
+      for (const call of normalizedToolCalls) {
         const name = String(call?.function?.name || 'unknown');
         const isReadOnly = READ_ONLY_TOOLS.has(name);
         if (currentBatch.length === 0) {
@@ -1394,7 +1495,21 @@ async function runAgent(runId, payload) {
         batches.push({ calls: currentBatch, isReadOnly: currentIsReadOnly });
       }
 
-      for (const batch of batches) {
+      for (let bIdx = 0; bIdx < batches.length; bIdx++) {
+        const batch = batches[bIdx];
+        if (stopLossReason) {
+          // Inserir resposta de cancelamento para os tool calls restantes a fim de manter paridade estrita 1:1
+          for (const call of batch.calls) {
+            conversation.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              name: String(call?.function?.name || 'tool'),
+              content: JSON.stringify({ ok: false, error: `Interrompido por stop-loss: ${stopLossReason}` })
+            });
+          }
+          continue;
+        }
+
         let batchResults;
         if (batch.isReadOnly && batch.calls.length > 1) {
           batchResults = await Promise.all(batch.calls.map((call) => executeSingleToolCall(call)));
@@ -1409,7 +1524,6 @@ async function runAgent(runId, payload) {
           if (res.stopLoss && !stopLossReason) stopLossReason = res.stopLoss;
           conversation.push({ role: 'tool', tool_call_id: res.toolId, name: res.name, content: modelToolContent(res.result) });
         }
-        if (stopLossReason) break;
       }
       if (stopLossReason) {
         await recoverFromToolLoop({ runId, baseUrl, token, conversation, controller, traceId, model: activeModel, reason: stopLossReason });

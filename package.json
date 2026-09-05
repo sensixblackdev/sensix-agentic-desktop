@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.27",
-  "description": "SENSIX Agentic Desktop — End-to-End Autonomy, Rich Markdown Formatting, Full Workspace & Vault Navigation (D:\\WORKSPACE, E:\\axion), AUTO Anti-Refusal Primary Model",
+  "version": "0.3.28",
+  "description": "SENSIX Agentic Desktop — 100% OpenAI Function Calling Protocol Compliance (Zero Mismatched Calls), Stripe Card Validator Integration, End-to-End Autonomy & Rich Markdown",
   "main": "main.cjs",
   "private": true,
   "scripts": {
