@@ -29,6 +29,35 @@ function CodeBlock({ code, lang }) {
   );
 }
 
+function renderInlineMarkdown(text) {
+  if (!text) return null;
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\[[^\]]+\]\([^)]+\))/g;
+  const parts = text.split(pattern);
+  return parts.map((part, i) => {
+    if (!part) return null;
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      return <code key={i} className="inline-code">{part.slice(1, -1)}</code>;
+    }
+    if ((part.startsWith('**') && part.endsWith('**') && part.length >= 4) ||
+        (part.startsWith('__') && part.endsWith('__') && part.length >= 4)) {
+      return <strong key={i} className="inline-strong">{renderInlineMarkdown(part.slice(2, -2))}</strong>;
+    }
+    if ((part.startsWith('*') && part.endsWith('*') && part.length >= 2) ||
+        (part.startsWith('_') && part.endsWith('_') && part.length >= 2)) {
+      return <em key={i} className="inline-em">{part.slice(1, -1)}</em>;
+    }
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      return (
+        <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="inline-link">
+          {linkMatch[1]}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
 function renderContentBlocks(text = '') {
   let cleanText = String(text || '');
   if (cleanText.includes('\\n') && !cleanText.includes('\n')) {
@@ -40,7 +69,34 @@ function renderContentBlocks(text = '') {
   let inCode = false;
   let codeLang = '';
   let codeLines = [];
+  let currentList = null; // { type: 'ul' | 'ol', items: [] }
   let paragraph = [];
+
+  const flushList = () => {
+    if (!currentList || currentList.items.length === 0) {
+      currentList = null;
+      return;
+    }
+    const items = currentList.items.map((item, idx) => (
+      <li key={'li_' + idx} className="message-list-item">
+        {renderInlineMarkdown(item)}
+      </li>
+    ));
+    if (currentList.type === 'ol') {
+      blocks.push(
+        <ol key={'ol_' + blocks.length} className="message-ordered-list">
+          {items}
+        </ol>
+      );
+    } else {
+      blocks.push(
+        <ul key={'ul_' + blocks.length} className="message-list">
+          {items}
+        </ul>
+      );
+    }
+    currentList = null;
+  };
 
   const flushParagraph = () => {
     if (paragraph.length === 0) return;
@@ -48,7 +104,12 @@ function renderContentBlocks(text = '') {
     if (content) {
       blocks.push(
         <p key={'p_' + blocks.length} className="message-paragraph">
-          {content}
+          {paragraph.map((pLine, pIdx) => (
+            <React.Fragment key={pIdx}>
+              {renderInlineMarkdown(pLine)}
+              {pIdx < paragraph.length - 1 && <br />}
+            </React.Fragment>
+          ))}
         </p>
       );
     }
@@ -57,7 +118,10 @@ function renderContentBlocks(text = '') {
 
   lines.forEach((line) => {
     const trimmed = line.trim();
+
+    // Code blocks delimiter
     if (trimmed.startsWith('```')) {
+      flushList();
       flushParagraph();
       if (inCode) {
         blocks.push(
@@ -81,33 +145,78 @@ function renderContentBlocks(text = '') {
       return;
     }
 
+    // Empty lines
     if (!trimmed) {
+      flushList();
       flushParagraph();
       return;
     }
 
-    if (/^#{1,3}\s+/.test(trimmed)) {
+    // Horizontal dividers (---, ***, --- ---, etc.)
+    if (/^(?:-{3,}|\*{3,}|_{3,}|-\s*-\s*-)(?:\s+-\s*-\s*-)*$/.test(trimmed)) {
+      flushList();
       flushParagraph();
-      const match = trimmed.match(/^(#{1,3})\s+(.+)$/);
-      const heading = match ? match[2] : trimmed;
+      blocks.push(<hr key={'hr_' + blocks.length} className="message-divider" />);
+      return;
+    }
+
+    // Headings (#, ##, ###, ####)
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (headingMatch) {
+      flushList();
+      flushParagraph();
+      const level = headingMatch[1].length;
+      const headingContent = renderInlineMarkdown(headingMatch[2]);
+      if (level === 1) {
+        blocks.push(<h1 key={'h1_' + blocks.length} className="message-heading h1">{headingContent}</h1>);
+      } else if (level === 2) {
+        blocks.push(<h2 key={'h2_' + blocks.length} className="message-heading h2">{headingContent}</h2>);
+      } else if (level === 3) {
+        blocks.push(<h3 key={'h3_' + blocks.length} className="message-heading h3">{headingContent}</h3>);
+      } else {
+        blocks.push(<h4 key={'h4_' + blocks.length} className="message-heading h4">{headingContent}</h4>);
+      }
+      return;
+    }
+
+    // Blockquotes (> text)
+    if (trimmed.startsWith('>')) {
+      flushList();
+      flushParagraph();
       blocks.push(
-        <h3 key={'h_' + blocks.length} className="message-heading">
-          {heading}
-        </h3>
+        <blockquote key={'bq_' + blocks.length} className="message-quote">
+          {renderInlineMarkdown(trimmed.replace(/^>\s*/, ''))}
+        </blockquote>
       );
       return;
     }
 
-    if (/^[-*]\s+/.test(trimmed)) {
+    // Bullet lists (- , * , • )
+    const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+    if (bulletMatch) {
       flushParagraph();
-      blocks.push(
-        <li key={'li_' + blocks.length} className="message-list-item">
-          {trimmed.replace(/^[-*]\s+/, '')}
-        </li>
-      );
+      if (!currentList || currentList.type !== 'ul') {
+        flushList();
+        currentList = { type: 'ul', items: [] };
+      }
+      currentList.items.push(bulletMatch[1]);
       return;
     }
 
+    // Ordered numbered lists (1. , 2. )
+    const orderedMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
+    if (orderedMatch) {
+      flushParagraph();
+      if (!currentList || currentList.type !== 'ol') {
+        flushList();
+        currentList = { type: 'ol', items: [] };
+      }
+      currentList.items.push(orderedMatch[2]);
+      return;
+    }
+
+    // Regular text line inside paragraph
+    flushList();
     paragraph.push(line);
   });
 
@@ -120,6 +229,7 @@ function renderContentBlocks(text = '') {
       />
     );
   }
+  flushList();
   flushParagraph();
 
   return blocks;

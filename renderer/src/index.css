@@ -569,20 +569,108 @@ html, body, #root {
   text-transform: uppercase;
 }
 .message-body-content {
-  line-height: 1.5;
+  line-height: 1.6;
   user-select: text;
+  font-size: 13px;
+  color: #e4e4e7;
+  word-break: break-word;
+}
+.message-body-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.message-body-error {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  padding: 8px 12px;
 }
 .message-paragraph {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+.message-paragraph:last-child {
+  margin-bottom: 0;
 }
 .message-heading {
-  margin: 12px 0 6px;
-  font-size: 14px;
+  font-weight: 600;
   color: #fff;
+  margin: 14px 0 6px;
+  line-height: 1.3;
+}
+.message-heading.h1 {
+  font-size: 17px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
+}
+.message-heading.h2 {
+  font-size: 15px;
+}
+.message-heading.h3 {
+  font-size: 14px;
+}
+.message-heading.h4 {
+  font-size: 13px;
+  color: #d4d4d8;
+}
+.message-list {
+  margin: 6px 0 10px 20px;
+  padding: 0;
+  list-style-type: disc;
+}
+.message-ordered-list {
+  margin: 6px 0 10px 20px;
+  padding: 0;
+  list-style-type: decimal;
 }
 .message-list-item {
-  margin-left: 18px;
   margin-bottom: 4px;
+  line-height: 1.5;
+  color: #e4e4e7;
+}
+.inline-code {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #a5f3fc;
+}
+.inline-strong {
+  font-weight: 700;
+  color: #ffffff;
+}
+.inline-em {
+  font-style: italic;
+  color: #e4e4e7;
+}
+.inline-link {
+  color: #38bdf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.inline-link:hover {
+  color: #7dd3fc;
+}
+.message-divider {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 14px 0;
+  width: 100%;
+}
+.message-quote {
+  border-left: 3px solid rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.05);
+  padding: 6px 12px;
+  margin: 8px 0;
+  border-radius: 0 6px 6px 0;
+  color: #cbd5e1;
+  font-style: italic;
 }
 
 /* Tool Timeline */

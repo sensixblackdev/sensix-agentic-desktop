@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.26",
-  "description": "SENSIX Agentic Desktop — AUTO Primary Model & Anti-Refusal Architecture with Strict Native Tool Calling (100% OpenAI Function Calling Compliant)",
+  "version": "0.3.27",
+  "description": "SENSIX Agentic Desktop — End-to-End Autonomy, Rich Markdown Formatting, Full Workspace & Vault Navigation (D:\\WORKSPACE, E:\\axion), AUTO Anti-Refusal Primary Model",
   "main": "main.cjs",
   "private": true,
   "scripts": {

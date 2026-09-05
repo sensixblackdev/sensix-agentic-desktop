@@ -11,6 +11,7 @@ const DEFAULT_BASE_URL = process.env.SENSIX_API_BASE_URL || 'https://api.sensix.
 const LEGACY_BASE_URL = 'http://174.78.228.101:40746/v1';
 const SENSIX_GATEWAY_HOSTS = ['api.sensix.it.com', 'sensix.it.com'];
 const WORKSPACE_ROOT = path.resolve(process.env.SENSIX_WORKSPACE_ROOT || 'D:\\WORKSPACE');
+const AXION_HEAVY_ROOT = path.resolve(process.env.AXION_HEAVY_ROOT || 'E:\\axion');
 const MAX_TOOL_OUTPUT = 24 * 1024;
 const MAX_MODEL_TOOL_OUTPUT = 3 * 1024;
 const MAX_LIST_RESULTS = 60;
@@ -21,7 +22,7 @@ const activeRuns = new Map();
 let mainWindow = null;
 
 const AGENT_SYSTEM_PROMPT = [
-  'Você é o agente autônomo de engenharia de software SENSIX (AXION Enterprise) operando no workspace D:\\WORKSPACE.',
+  'Você é o agente autônomo de engenharia de software SENSIX (AXION Enterprise) operando no ecossistema canônico D:\\WORKSPACE e E:\\axion.',
   'DIRETRIZES DE EXECUÇÃO AGÊNTICA INDUSTRIAL:',
   '1. ZERO PROCRASTINAÇÃO E AÇÃO IMEDIATA: NUNCA responda apenas dizendo que "vai fazer", "aguarde um momento" ou pedindo confirmações óbvias. Se você pretende ler, listar, criar ou editar arquivos, INVOQUE A FERRAMENTA NA MESMA RESPOSTA! Dizer em texto que vai fazer algo sem emitir tool_call é estritamente proibido.',
   '2. AUTONOMIA E PROATIVIDADE COMPLETA: Quando o usuário pedir para criar um projeto, validador ou módulo, execute o trabalho completo de ponta a ponta. Crie a estrutura de diretórios, escreva o código funcional com regras reais, crie os arquivos de teste e execute a validação no terminal usando shell_exec.',
@@ -34,18 +35,20 @@ const AGENT_SYSTEM_PROMPT = [
   '   - Status factual dos testes e verificações de código executados no terminal.',
   '   - Comandos exatos para o usuário rodar e testar no PowerShell.',
   '7. AUTO-HEALING E RECUPERAÇÃO EM TEMPO REAL: Se a execução de qualquer ferramenta falhar (erro de sintaxe, código de saída != 0, arquivo não encontrado ou token inválido), NUNCA PARE e NUNCA responda apenas explicando o erro em texto para o usuário. Você DEVE analisar o erro imediatamente, ajustar os argumentos ou usar ferramentas alternativas (ex: no PowerShell use ";" em vez de "&&", ou use search_text/read_file) e EXECUTAR A FERRAMENTA CORRIGIDA IMEDIATAMENTE NO MESMO TURNO até concluir a tarefa com sucesso.',
-  'Workspace autorizado: D:\\WORKSPACE. Comandos destrutivos e acesso a segredos/Vault são bloqueados pelos guardrails.',
+  '8. EXECUÇÃO DE PONTA A PONTA (RUN DEV, BUILD E VALIDAÇÃO FACTUAL): PROIBIDO parar no meio do caminho ou responder com recomendações passivas (ex: "Ações recomendadas: execute npm run dev", "Próximos passos", "Sugestões para o usuário testar") sem você mesmo ter executado a validação no terminal (shell_exec). Se a tarefa envolve rodar dev, testar, compilar, corrigir bugs ou criar módulos, execute os testes ou scripts de verificação até o fim com shell_exec, inspecione a saída empírica e comprove o funcionamento.',
+  '9. NAVEGAÇÃO AUTORIZADA NO WORKSPACE E VAULT: O workspace oficial é D:\\WORKSPACE (código em SANDBOX/apps e SANDBOX/services, produção em PRODUCTION, documentação em Codex e configurações/credenciais canônicas em D:\\WORKSPACE\\SECURE\\VAULT) e artefatos pesados/builds em E:\\axion. Você tem permissão total para ler documentação oficial (AGENTS.md, DIRECTIVES.md, README.md) e consultar o Vault para operações técnicas do ecossistema.',
+  'Workspace autorizado: D:\\WORKSPACE e E:\\axion. Comandos destrutivos de disco e chaves SSH privadas são bloqueados pelos guardrails.',
 ].join(' ');
 
 const TOOL_DEFINITIONS = [
-  tool('list_files', 'Lista arquivos e diretórios dentro do workspace autorizado.', {
-    path: { type: 'string', description: 'Caminho relativo a D:\\WORKSPACE. Use . para a raiz.' },
+  tool('list_files', 'Lista arquivos e diretórios dentro do workspace autorizado (D:\\WORKSPACE e E:\\axion).', {
+    path: { type: 'string', description: 'Caminho relativo a D:\\WORKSPACE ou absoluto em E:\\axion. Use . para a raiz.' },
     max_results: { type: 'integer', minimum: 1, maximum: 500 },
   }, ['path']),
-  tool('make_directory', 'Cria um novo diretório dentro do workspace autorizado D:\\WORKSPACE.', {
-    path: { type: 'string', description: 'Caminho do diretório relativo a D:\\WORKSPACE.' },
+  tool('make_directory', 'Cria um novo diretório dentro do workspace autorizado D:\\WORKSPACE ou E:\\axion.', {
+    path: { type: 'string', description: 'Caminho do diretório relativo a D:\\WORKSPACE ou E:\\axion.' },
   }, ['path']),
-  tool('read_file', 'Lê um arquivo de texto do workspace, opcionalmente por intervalo de linhas.', {
+  tool('read_file', 'Lê um arquivo de texto do workspace (D:\\WORKSPACE incluindo SECURE\\VAULT e E:\\axion), opcionalmente por intervalo de linhas.', {
     path: { type: 'string' },
     start_line: { type: 'integer', minimum: 1 },
     end_line: { type: 'integer', minimum: 1 },
@@ -55,11 +58,11 @@ const TOOL_DEFINITIONS = [
     path: { type: 'string', description: 'Diretório relativo; padrão .' },
     max_results: { type: 'integer', minimum: 1, maximum: 200 },
   }, ['query']),
-  tool('write_file', 'Cria ou sobrescreve atomicamente um arquivo de texto dentro do workspace.', {
+  tool('write_file', 'Cria ou sobrescreve atomicamente um arquivo de texto dentro do workspace (D:\\WORKSPACE ou E:\\axion).', {
     path: { type: 'string' }, content: { type: 'string' },
   }, ['path', 'content']),
   tool('patch_file', 'Edita cirurgicamente um arquivo existente substituindo old_string por new_string. old_string deve ocorrer exatamente uma única vez no arquivo para garantir precisão.', {
-    path: { type: 'string', description: 'Caminho do arquivo relativo a D:\\WORKSPACE' },
+    path: { type: 'string', description: 'Caminho do arquivo relativo a D:\\WORKSPACE ou E:\\axion' },
     old_string: { type: 'string', description: 'Trecho exato existente a ser substituído (deve ser único no arquivo)' },
     new_string: { type: 'string', description: 'Novo trecho substituto' },
   }, ['path', 'old_string', 'new_string']),
@@ -80,7 +83,7 @@ const TOOL_DEFINITIONS = [
       }
     }
   }, ['todos']),
-  tool('shell_exec', 'Executa PowerShell real para coding, Git, diagnóstico e validação. Comandos destrutivos e acesso a segredos são bloqueados.', {
+  tool('shell_exec', 'Executa PowerShell real para coding, Git, diagnóstico, build, run dev e validação. Comandos destrutivos de disco são bloqueados.', {
     command: { type: 'string' },
     cwd: { type: 'string', description: 'Diretório relativo ao workspace; padrão .' },
     timeout_ms: { type: 'integer', minimum: 1000, maximum: 120000 },
@@ -370,15 +373,38 @@ function ensureWorkspacePath(inputPath = '.') {
   if (/^[/\\]+[^/\\]/.test(cleaned) && !/^[a-zA-Z]:[/\\]/.test(cleaned)) {
     cleaned = cleaned.replace(/^[/\\]+/, '');
   }
-  const target = path.resolve(WORKSPACE_ROOT, cleaned || '.');
-  const relative = path.relative(WORKSPACE_ROOT, target);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('A ferramenta só pode acessar caminhos dentro de D:\\WORKSPACE.');
-  const segments = relative.toLowerCase().split(path.sep);
-  if (segments[0] === 'secure' && segments[1] === 'vault') throw new Error('Acesso ao Vault é bloqueado para o agente desktop.');
+  let target;
+  if (path.isAbsolute(cleaned)) {
+    target = path.normalize(cleaned);
+  } else {
+    target = path.resolve(WORKSPACE_ROOT, cleaned || '.');
+  }
+
+  // Canonical workspace D:\WORKSPACE and all subpaths (including SECURE\VAULT)
+  const relWorkspace = path.relative(WORKSPACE_ROOT, target);
+  const isInsideWorkspace = !relWorkspace.startsWith('..') && !path.isAbsolute(relWorkspace);
+
+  // Heavy artifacts and builds E:\axion
+  const relHeavy = path.relative(AXION_HEAVY_ROOT, target);
+  const isInsideHeavy = !relHeavy.startsWith('..') && !path.isAbsolute(relHeavy);
+
+  if (!isInsideWorkspace && !isInsideHeavy) {
+    throw new Error('Acesso restrito ao workspace canônico (D:\\WORKSPACE) e repositório de dados/builds (E:\\axion).');
+  }
   return target;
 }
 
-function relativeWorkspacePath(target) { return path.relative(WORKSPACE_ROOT, target) || '.'; }
+function relativeWorkspacePath(target) {
+  const relWorkspace = path.relative(WORKSPACE_ROOT, target);
+  if (!relWorkspace.startsWith('..') && !path.isAbsolute(relWorkspace)) {
+    return relWorkspace || '.';
+  }
+  const relHeavy = path.relative(AXION_HEAVY_ROOT, target);
+  if (!relHeavy.startsWith('..') && !path.isAbsolute(relHeavy)) {
+    return path.join('E:\\axion', relHeavy);
+  }
+  return target;
+}
 function isSecretPath(target) { return /(^|[\\/])\.env(?:\.|$)/i.test(relativeWorkspacePath(target)); }
 function truncateOutput(value, limit = MAX_TOOL_OUTPUT) {
   const text = redactSecrets(value);
@@ -678,7 +704,7 @@ function validateShellCommand(command) {
   const normalized = String(command || '').trim();
   if (!normalized) throw new Error('Comando vazio.');
   const forbidden = [
-    /secure[\\/]vault/i, /(?:^|[\\/])\.ssh(?:[\\/]|$)/i, /\bid_(?:rsa|ed25519)\b/i,
+    /(?:^|[\\/])\.ssh(?:[\\/]|$)/i, /\bid_(?:rsa|ed25519)\b/i,
     /\b(?:remove-item|rm|rmdir|rd|del|erase)\b[^\n]*(?:-recurse|-r\b|\/s\b|\/q\b)/i,
     /\bgit\s+(?:reset\s+--hard|clean\s+-[^\s]*f|checkout\s+--)/i,
     /\b(?:format|diskpart|shutdown|stop-computer|restart-computer)\b/i,
@@ -1267,8 +1293,11 @@ async function runAgent(runId, payload) {
           const wroteFilesCount = conversation.filter((m) => m.role === 'tool' && m.name === 'write_file').length;
           const isAskingToContinueInsteadOfCompleting = isMultiScriptRequested && wroteFilesCount > 0 && wroteFilesCount < 3 && /\b(?:se quiser posso criar|deseja que eu crie|posso criar tamb[ée]m|caso queira mais|deseja outros|quer que eu fa[çc]a)\b/i.test(textContent);
 
-          const isProcrastinating = payload.mode !== 'plan' && step < 10 && (
+          const isListingPendingActionsInsteadOfExecuting = /\b(?:a[çc][õo]es\s+(?:imediatas\s+)?recomendadas|pr[óo]ximos?\s+passos?(?:\s+cr[íi]ticos?)?|recomenda[çc][õo]es|sugest[õo]es|passo\s+seguinte|voc[êe]\s+pode\s+rodar|para\s+testar(?:,|\s+)?(?:voc[êe]\s+pode\s+)?execute|recomendo\s+rodar|execute\s+o\s+comando|para\s+verificar\s+rod(?:e|ar)|execute\s+npm\s+run\s+dev|rodar\s+o\s+npm\s+run\s+dev|execute\s+o\s+run\s+dev)\b/i.test(textContent);
+
+          const isProcrastinating = payload.mode !== 'plan' && step < 12 && (
             isAskingToContinueInsteadOfCompleting ||
+            isListingPendingActionsInsteadOfExecuting ||
             (lastToolHadError && (isExplainingErrorOrTryingRetry || !textContent.includes('### 🏁'))) ||
             /\b(?:vou (?:ler|listar|criar|executar|verificar|fazer|inspecionar)|aguarde(?: um momento)?|estou listando|estou lendo|aguardo|me informe o caminho|por favor(?:,| ) forneça|forneça o conteúdo|compartilhe o conteúdo)\b/i.test(textContent) ||
             (step === 0 && /\b(?:entendido|claro|com certeza|vou começar|vou criar)\b/i.test(textContent) && textContent.length < 320 && !textContent.includes('```'))
@@ -1276,14 +1305,17 @@ async function runAgent(runId, payload) {
           if (isProcrastinating) {
             const isHealing = lastToolHadError && (isExplainingErrorOrTryingRetry || !textContent.includes('### 🏁'));
             const isMultiScriptHealing = isAskingToContinueInsteadOfCompleting;
-            writeAudit('warn', isHealing ? 'agent_auto_healing_triggered' : 'agent_procrastination_prevented', { step, lastToolHadError, textContent }, traceId);
-            sendChatEvent({ runId, type: 'synthesizing', message: isMultiScriptHealing ? 'Criando próximos scripts solicitados no plano...' : (isHealing ? 'Detectada falha na ferramenta. Corrigindo e executando novamente...' : 'Executando ferramentas do workspace de forma autônoma...') });
+            const isExecutingPending = isListingPendingActionsInsteadOfExecuting;
+            writeAudit('warn', isHealing ? 'agent_auto_healing_triggered' : (isExecutingPending ? 'agent_passive_recommendations_intercepted' : 'agent_procrastination_prevented'), { step, lastToolHadError, textContent }, traceId);
+            sendChatEvent({ runId, type: 'synthesizing', message: isMultiScriptHealing ? 'Criando próximos scripts solicitados no plano...' : (isHealing ? 'Detectada falha na ferramenta. Corrigindo e executando novamente...' : (isExecutingPending ? 'Executando comandos e validação pendentes no terminal...' : 'Executando ferramentas do workspace de forma autônoma...')) });
             conversation.push({ role: 'assistant', content: message.content });
             const instruction = isMultiScriptHealing
               ? 'DIRETRIZ DE EXECUÇÃO: Você foi instruído a criar vários scripts. Não pare no primeiro nem pergunte se deve continuar. Crie os demais scripts solicitados agora utilizando write_file até completar o conjunto.'
               : (isHealing
                 ? 'AUTO-HEALING MANDATÓRIO: A ferramenta anterior falhou. Não explique o erro em texto nem prometa tentar. Identifique a causa raiz, corrija os argumentos/comando (ex: use ";" em vez de "&&" no PowerShell, ou use search_text para buscas) e EXECUTE A FERRAMENTA AGORA no mesmo turno até concluir com sucesso.'
-                : 'DIRETRIZ DE EXECUÇÃO: Não responda apenas prometendo em texto ou pedindo dados triviais. Execute agora as ferramentas necessárias (list_files, read_file, make_directory, write_file ou shell_exec) para inspecionar, criar os arquivos e validar a tarefa imediatamente.');
+                : (isExecutingPending
+                  ? 'DIRETRIZ DE EXECUÇÃO MANDATÓRIA (ZERO RECOMENDAÇÕES PASSIVAS): O usuário exige execução de ponta a ponta. É estritamente proibido parar emitindo "Ações recomendadas", "Próximos passos" ou sugerir comandos para o usuário rodar. Invoque shell_exec IMEDIATAMENTE para executar a validação, npm run dev/build ou testes necessários, verifique o resultado no terminal e comprove que está funcionando antes de sintetizar a conclusão final.'
+                  : 'DIRETRIZ DE EXECUÇÃO: Não responda apenas prometendo em texto ou pedindo dados triviais. Execute agora as ferramentas necessárias (list_files, read_file, make_directory, write_file ou shell_exec) para inspecionar, criar os arquivos e validar a tarefa imediatamente.'));
             conversation.push({ role: 'user', content: instruction });
             step += 1;
             continue;
