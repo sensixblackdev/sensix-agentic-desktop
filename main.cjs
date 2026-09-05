@@ -1428,9 +1428,11 @@ function createWindow() {
   mainWindow.loadFile(indexPath);
   mainWindow.show();
   mainWindow.focus();
+  mainWindow.setAlwaysOnTop(true);
+  setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(false); }, 800);
 
   if (process.argv.includes('--dev') || !app.isPackaged) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    mainWindow.webContents.openDevTools({ mode: 'right' });
   }
 
   mainWindow.on('closed', () => { mainWindow = null; });
