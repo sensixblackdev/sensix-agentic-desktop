@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.25",
-  "description": "SENSIX Agentic Desktop — Strict Native Tool-Calling Engine: Excluded All Non-Native Models (Dolphin/Hermes/R1/Ollama), 100% OpenAI Function Calling Compliant",
+  "version": "0.3.26",
+  "description": "SENSIX Agentic Desktop — AUTO Primary Model & Anti-Refusal Architecture with Strict Native Tool Calling (100% OpenAI Function Calling Compliant)",
   "main": "main.cjs",
   "private": true,
   "scripts": {

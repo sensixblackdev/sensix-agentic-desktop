@@ -4,7 +4,7 @@ import { MetricCard } from '../components/MetricCard';
 import { useToast } from '../context/ToastContext';
 
 const FALLBACK_CHAIN = [
-  { id: 'auto', label: 'Auto (Roteamento Dinâmico)', type: 'meta', status: 'active' },
+  { id: 'auto', label: 'Auto (Anti-Refusal & Roteamento Inteligente)', type: 'meta', status: 'active' },
   { id: 'agentic-primary', label: 'Primary (Mistral Devstral 2)', type: 'agentic', status: 'standby' },
   { id: 'fast-secondary', label: 'Secondary (Codestral / DeepSeek)', type: 'coding', status: 'standby' },
 ];

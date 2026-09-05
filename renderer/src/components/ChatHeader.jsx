@@ -31,11 +31,11 @@ export function ChatHeader({
 
   const activeModelObj = models.find((m) => m.id === selectedModel) || {
     id: selectedModel || 'auto',
-    name: selectedModel || 'Carregando modelos...'
+    name: (selectedModel === 'auto' || !selectedModel) ? '✨ Auto (Primário · Anti-Refusal)' : selectedModel
   };
 
   const filteredModels = models.filter((m) =>
-    (m.name || m.id || '').toLowerCase().includes(searchFilter.toLowerCase())
+    (m.name || m.id || m.description || '').toLowerCase().includes(searchFilter.toLowerCase())
   );
 
   const modeOptions = [
@@ -104,10 +104,10 @@ export function ChatHeader({
                       aria-selected={isSelected}
                     >
                       <div className="option-main-row">
-                        <span className="option-name">{m.name || m.id}</span>
-                        {isUncensored && (
-                          <span className="badge badge-warning" style={{ fontSize: 9, padding: '1px 5px' }}>
-                            Uncensored
+                        <span className="option-name">{m.id === 'auto' ? '✨ Auto (Anti-Refusal)' : (m.name || m.id)}</span>
+                        {m.id === 'auto' && (
+                          <span className="badge badge-accent" style={{ fontSize: 9, padding: '1px 5px' }}>
+                            PRIMÁRIO · ANTI-REFUSAL
                           </span>
                         )}
                         {isSelected && <Check size={13} className="text-accent check-icon" />}

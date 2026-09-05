@@ -19,7 +19,7 @@ import { AIInlineAssistant } from '../components/AIInlineAssistant';
 import { DiffReviewModal } from '../components/DiffReviewModal';
 import { useToast } from '../context/ToastContext';
 
-export function IDEPage({ session, models = [], selectedModel = '', onSelectModel }) {
+export function IDEPage({ session, models = [], selectedModel = 'auto', onSelectModel }) {
   const [items, setItems] = useState([]);
   const [loadingTree, setLoadingTree] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -151,7 +151,7 @@ export function IDEPage({ session, models = [], selectedModel = '', onSelectMode
     try {
       const targetModel = (selectedModel && !selectedModel.includes('dolphin') && !selectedModel.includes('hermes'))
         ? selectedModel
-        : 'mistralai/devstral-2512';
+        : 'auto';
       const res = await window.sensix?.aiEditCode?.({
         filePath: activeTab.path,
         currentCode: activeTab.content,

@@ -32,7 +32,7 @@ function AppContent() {
   const [selectedProject, setSelectedProject] = useState('all');
   const [activeTab, setActiveTab] = useState('chat');
   const [models, setModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedModel, setSelectedModel] = useState('auto');
   const [runMode, setRunMode] = useState('normal');
   const [actionMode, setActionMode] = useState('guarded');
 
@@ -59,7 +59,7 @@ function AppContent() {
         const m = await window.sensix?.listModels?.();
         if (Array.isArray(m) && m.length > 0) {
           setModels(m);
-          setSelectedModel(m[0].id);
+          setSelectedModel((prev) => prev || 'auto');
         }
       } catch (err) {
         console.warn('Inicialização com fallback offline:', err.message);

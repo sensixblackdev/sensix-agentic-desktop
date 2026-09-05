@@ -59,13 +59,14 @@ export function AIInlineAssistant({
         <div className="ai-inline-controls">
           <select
             className="ai-model-select"
-            value={selectedModel}
+            value={selectedModel || 'auto'}
             onChange={(e) => onSelectModel(e.target.value)}
             disabled={isGenerating}
             title="Selecionar Modelo de Alta Performance"
           >
+            <option value="auto">✨ Auto (Primário · Anti-Refusal & Tool Calls Nativos)</option>
             {models.length > 0 ? (
-              models.map((m) => (
+              models.filter((m) => m.id !== 'auto').map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.id.split('/').pop()} · {m.ownedBy || 'AI'}
                 </option>
