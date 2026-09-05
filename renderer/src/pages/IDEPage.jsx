@@ -149,7 +149,9 @@ export function IDEPage({ session, models = [], selectedModel = '', onSelectMode
     setIsAiGenerating(true);
 
     try {
-      const targetModel = selectedModel || 'cognitivecomputations/dolphin-mistral-24b-venice-edition';
+      const targetModel = (selectedModel && !selectedModel.includes('dolphin') && !selectedModel.includes('hermes'))
+        ? selectedModel
+        : 'mistralai/devstral-2512';
       const res = await window.sensix?.aiEditCode?.({
         filePath: activeTab.path,
         currentCode: activeTab.content,

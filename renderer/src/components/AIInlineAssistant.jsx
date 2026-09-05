@@ -72,9 +72,11 @@ export function AIInlineAssistant({
               ))
             ) : (
               <>
-                <option value="cognitivecomputations/dolphin-mistral-24b-venice-edition">Dolphin-Mistral 24B (Ultra-rápido)</option>
-                <option value="nousresearch/hermes-3-llama-3.1-70b">Hermes-3 70B (Raciocínio Profundo)</option>
-                <option value="nousresearch/hermes-4-70b">Hermes-4 70B (Orquestração)</option>
+                <option value="mistralai/devstral-2512">Devstral 2 123B (Engenharia Agêntica · Tool Call Nativo)</option>
+                <option value="mistralai/codestral-2508">Codestral 2508 (Ultra-rápido · Tool Call Nativo)</option>
+                <option value="deepseek/deepseek-chat">DeepSeek V3 685B (SOTA Coding · Tool Call Nativo)</option>
+                <option value="anthropic/claude-sonnet-5">Claude Sonnet 5 (State-of-the-Art · Tool Call Nativo)</option>
+                <option value="openai/gpt-4o">OpenAI GPT-4o (Omni · Tool Call Nativo)</option>
               </>
             )}
           </select>

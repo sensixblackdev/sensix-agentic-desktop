@@ -87,11 +87,40 @@ const TOOL_DEFINITIONS = [
   }, ['command']),
 ];
 
-const KNOWN_REACT_MODELS = new Set([
+// Modelos que comprovadamente NÃO suportam tool_calls nativos no formato OpenAI/OpenRouter
+const NON_NATIVE_TOOL_MODELS = new Set([
   'cognitivecomputations/dolphin-mistral-24b-venice-edition',
   'nousresearch/hermes-3-llama-3.1-70b',
   'nousresearch/hermes-4-70b',
+  'qwen/qwen-2.5-coder-32b-instruct',
+  'qwen2.5-coder:7b',
+  'qwen3-coder-30b',
+  'deepseek/deepseek-r1',
 ]);
+
+function isNonNativeToolModel(modelId) {
+  if (!modelId || typeof modelId !== 'string') return false;
+  const idLower = modelId.toLowerCase();
+  if (NON_NATIVE_TOOL_MODELS.has(modelId)) return true;
+  return (
+    idLower.includes('dolphin') ||
+    idLower.includes('hermes') ||
+    idLower.includes('ollama') ||
+    idLower.includes('deepseek-r1') ||
+    idLower.includes('qwen2.5-coder:7b') ||
+    idLower.includes('qwen3-coder-30b')
+  );
+}
+
+// Modelos canônicos com suporte comprovado e 100% nativo a tool_calls
+const NATIVE_TOOL_CALL_MODELS = [
+  { id: 'mistralai/devstral-2512', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 1 — Mistral Devstral 2 123B (Engenharia Agêntica & Native Tool Calls)' },
+  { id: 'mistralai/codestral-2508', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 2 — Mistral Codestral 2508 (Ultra-Baixa Latência & Native Tool Calls)' },
+  { id: 'deepseek/deepseek-chat', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 3 — DeepSeek V3 685B MoE (SOTA Coding & Native Tool Calls)' },
+  { id: 'anthropic/claude-sonnet-5', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 4 — Claude Sonnet 5 (State-of-the-Art Reasoning & Native Tool Calls)' },
+  { id: 'anthropic/claude-3.5-sonnet', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 4 — Claude 3.5 Sonnet (State-of-the-Art Reasoning & Native Tool Calls)' },
+  { id: 'openai/gpt-4o', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 5 — OpenAI GPT-4o Omni (Native Tool Calls & Vision)' },
+];
 
 function tool(name, description, properties, required) {
   return { type: 'function', function: { name, description, parameters: { type: 'object', properties, required, additionalProperties: false } } };
@@ -394,11 +423,7 @@ function modelToolContent(result) {
 async function fetchModels() {
   const { baseUrl, token } = readStoredCredentials();
   if (!token && !isTokenOptional(baseUrl)) {
-    return [
-      { id: 'cognitivecomputations/dolphin-mistral-24b-venice-edition', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 1 — ReAct / Autonomia Máxima (Padrão)' },
-      { id: 'nousresearch/hermes-3-llama-3.1-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 2 — Raciocínio Profundo & Arquitetura' },
-      { id: 'nousresearch/hermes-4-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 3 — Orquestração & Síntese Crítica' }
-    ];
+    return NATIVE_TOOL_CALL_MODELS;
   }
   const traceId = crypto.randomUUID();
   try {
@@ -406,21 +431,32 @@ async function fetchModels() {
     const body = await response.text();
     if (response.ok) {
       const parsed = JSON.parse(body);
-      const list = (Array.isArray(parsed?.data) ? parsed.data : []).filter((model) => typeof model?.id === 'string').map((model) => ({
-        id: model.id, object: model.object || 'model', ownedBy: model.owned_by || 'sensix-ai',
-        description: model.description || `${model.root || model.id} · Gateway SENSIX Multi-Tier`,
-      }));
+      const rawList = Array.isArray(parsed?.data) ? parsed.data : [];
+      // FILTRO ESTRITO: Excluir todos os modelos sem suporte nativo a tool calling
+      const list = rawList
+        .filter((model) => {
+          if (!model || typeof model.id !== 'string') return false;
+          // 1. Excluir modelos comprovadamente sem suporte nativo a tool calls
+          if (isNonNativeToolModel(model.id)) return false;
+          // 2. Se o gateway/OpenRouter fornecer supported_parameters, exigir 'tools'
+          if (Array.isArray(model.supported_parameters) && !model.supported_parameters.includes('tools')) {
+            return false;
+          }
+          return true;
+        })
+        .map((model) => ({
+          id: model.id,
+          object: model.object || 'model',
+          ownedBy: model.owned_by || model.ownedBy || 'sensix-ai',
+          description: model.description || `${model.root || model.id} · Suporte Nativo a Tool Calls`,
+        }));
       if (list.length > 0) return list;
     }
   } catch (err) {
     writeAudit('warn', 'fetch_models_offline_fallback', { error: safeErrorMessage(err) });
   }
 
-  return [
-    { id: 'cognitivecomputations/dolphin-mistral-24b-venice-edition', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 1 — ReAct / Autonomia Máxima (Offline)' },
-    { id: 'nousresearch/hermes-3-llama-3.1-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 2 — Raciocínio Profundo & Arquitetura (Offline)' },
-    { id: 'nousresearch/hermes-4-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 3 — Orquestração & Síntese Crítica (Offline)' }
-  ];
+  return NATIVE_TOOL_CALL_MODELS;
 }
 
 function repairIncompleteJson(raw) {
@@ -1057,19 +1093,16 @@ async function runAgent(runId, payload) {
   const userMessages = (payload.messages || []).filter((message) => message && message.role === 'user');
   const lastUserPrompt = userMessages.slice(-1)[0]?.content || '';
 
-  // Smart Auto-Routing
+  // Smart Auto-Routing (exclusivamente modelos com tool call nativo)
   let activeModel = String(payload.model || '').trim();
-  if (activeModel === 'auto' || !activeModel) {
-    const isUncensoredTask = /\b(?:ddos|pentest|ataque|exploit|vulnerabilidade|bypass|brute|reverse shell|red team|load testing|seguran[çc]a ofensiva|port scan|sqli|injection)\b/i.test(lastUserPrompt);
+  if (activeModel === 'auto' || !activeModel || isNonNativeToolModel(activeModel)) {
     const isReasoningTask = /\b(?:prove|prove que|racioc[íi]nio complexo|teorema|an[áa]lise matem[áa]tica)\b/i.test(lastUserPrompt);
-    if (isUncensoredTask) {
-      activeModel = 'cognitivecomputations/dolphin-mistral-24b-venice-edition';
-    } else if (isReasoningTask) {
+    if (isReasoningTask) {
       activeModel = 'deepseek/deepseek-chat';
     } else {
       activeModel = 'mistralai/devstral-2512';
     }
-    sendChatEvent({ runId, type: 'synthesizing', message: `Modo Auto: selecionado ${activeModel} com base no objetivo da tarefa...` });
+    sendChatEvent({ runId, type: 'synthesizing', message: `Modo Auto: selecionado ${activeModel} (suporte nativo a tool calls)...` });
   }
 
   writeAudit('info', 'agent_run_started', { model: activeModel, requestedModel: payload.model }, traceId);
@@ -1170,7 +1203,7 @@ async function runAgent(runId, payload) {
             sendChatEvent({
               runId,
               type: 'synthesizing',
-              message: 'Recusa ética do modelo detectada. Alternando automaticamente para modelo Uncensored (Dolphin Venice)...',
+              message: 'Recusa ética do modelo detectada. Alternando automaticamente para modelo alternativo com tool call nativo (Mistral Devstral)...',
             });
             writeAudit('warn', 'agent_refusal_fallback_triggered', { originalModel: activeModel, textContent }, traceId);
             telemetry.recordTelemetry({
@@ -1184,11 +1217,11 @@ async function runAgent(runId, payload) {
             learning.recordLesson({
               symptom: 'Modelo recusou executar instrução de pentest/segurança',
               rootCause: `Filtro ético em ${activeModel}`,
-              fixApplied: 'Comutação automática (hot-swap) para modelo Uncensored',
+              fixApplied: 'Comutação automática (hot-swap) para modelo permissivo com tool call nativo (Mistral Devstral)',
               tool: 'refusal_fallback',
               model: activeModel,
             });
-            activeModel = 'cognitivecomputations/dolphin-mistral-24b-venice-edition';
+            activeModel = 'mistralai/devstral-2512';
             const sanitized = sanitizeMessagesForReAct(conversation);
             conversation.length = 0;
             conversation.push(...sanitized);
@@ -1476,8 +1509,8 @@ ipcMain.handle('ide:ai-edit', async (_event, payload) => {
   const { baseUrl, token } = readStoredCredentials();
   const filePath = String(payload?.filePath || 'snippet.js').trim();
   const currentCode = String(payload?.currentCode ?? '');
-  const instruction = String(payload?.instruction || '').trim();
-  const model = String(payload?.model || 'cognitivecomputations/dolphin-mistral-24b-venice-edition').trim();
+  const requestedModel = String(payload?.model || '').trim();
+  const model = (!requestedModel || isNonNativeToolModel(requestedModel)) ? 'mistralai/devstral-2512' : requestedModel;
   const selection = payload?.selection ? String(payload.selection) : null;
 
   if (!instruction) return { ok: false, error: 'Instrução para a IA é obrigatória.' };

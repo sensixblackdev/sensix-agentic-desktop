@@ -144,22 +144,16 @@
     const selected = currentSession?.model || 'auto';
     const displayModelName = (model) => {
       const id = model.id;
-      if (id === 'auto') return '✨ Auto (Roteamento Inteligente & Anti-Recusa)';
-      if (id === 'mistralai/devstral-2512') return '🛠️ Mistral Devstral (Agentic Coder · Native Tools)';
-      if (id === 'cognitivecomputations/dolphin-mistral-24b-venice-edition') return '🔓 Venice Dolphin 24B (Uncensored · ReAct)';
-      if (id === 'nousresearch/hermes-3-llama-3.1-70b') return '🔓 Nous Hermes 3 70B (Uncensored Agentic · ReAct)';
-      if (id === 'nousresearch/hermes-4-70b') return '🔓 Nous Hermes 4 70B (Uncensored Reasoning · ReAct)';
-      if (id === 'qwen/qwen-2.5-coder-32b-instruct') return '💻 Qwen 2.5 Coder 32B (Elite Code)';
-      if (id === 'mistralai/codestral-2508') return '💻 Mistral Codestral (256k Code)';
-      if (id === 'deepseek/deepseek-chat') return '🧠 DeepSeek V3 685B (SOTA Coding)';
-      if (id === 'qwen2.5-coder:7b' || id === 'qwen3-coder-30b') return '⚡ Qwen 2.5 Coder 7B (Local Offline)';
-      if (id === 'anthropic/claude-sonnet-5' || id === 'anthropic/claude-3.5-sonnet') return '👑 Claude Sonnet 5 (Premium)';
-      if (id === 'openai/gpt-4o') return '👑 GPT-4o (Premium)';
-      if (id === 'deepseek/deepseek-r1') return '🧠 DeepSeek R1 (Reasoning)';
-      return id;
+      if (id === 'auto') return '✨ Auto (Roteamento Inteligente · Native Tool Calls)';
+      if (id === 'mistralai/devstral-2512') return '🛠️ Mistral Devstral 2 123B (Agentic Coder · Native Tools)';
+      if (id === 'mistralai/codestral-2508') return '⚡ Mistral Codestral 2508 (Ultra-rápido · Native Tools)';
+      if (id === 'deepseek/deepseek-chat') return '🧠 DeepSeek V3 685B (SOTA Coding · Native Tools)';
+      if (id === 'anthropic/claude-sonnet-5' || id === 'anthropic/claude-3.5-sonnet') return '💎 Claude Sonnet 5 (State-of-the-Art · Native Tools)';
+      if (id === 'openai/gpt-4o') return '🌐 OpenAI GPT-4o Omni (Native Tools & Vision)';
+      return `${id} (Native Tools)`;
     };
 
-    const autoOption = `<option value="auto" title="Roteamento dinâmico automático com hot-swap para modelos Uncensored em caso de recusa" ${selected === 'auto' ? 'selected' : ''}>✨ Auto (Roteamento Inteligente & Anti-Recusa)</option>`;
+    const autoOption = `<option value="auto" title="Roteamento dinâmico automático exclusivo entre modelos com tool calls nativos" ${selected === 'auto' ? 'selected' : ''}>✨ Auto (Roteamento Inteligente · Native Tool Calls)</option>`;
 
     els.modelSelect.innerHTML = autoOption + (models.length
       ? models.map((model) => `<option value="${escapeHtml(model.id)}" title="${escapeHtml(model.description)}" ${model.id === selected ? 'selected' : ''}>${escapeHtml(displayModelName(model))}</option>`).join('')

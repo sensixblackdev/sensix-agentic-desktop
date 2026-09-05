@@ -4,9 +4,9 @@ import { MetricCard } from '../components/MetricCard';
 import { useToast } from '../context/ToastContext';
 
 const FALLBACK_CHAIN = [
-  { id: 'auto', label: 'Auto (Best Available)', type: 'meta', status: 'active' },
-  { id: 'uncensored-primary', label: 'Uncensored Primary', type: 'uncensored', status: 'standby' },
-  { id: 'fallback', label: 'Fallback (Safe)', type: 'censored', status: 'standby' },
+  { id: 'auto', label: 'Auto (Roteamento Dinâmico)', type: 'meta', status: 'active' },
+  { id: 'agentic-primary', label: 'Primary (Mistral Devstral 2)', type: 'agentic', status: 'standby' },
+  { id: 'fast-secondary', label: 'Secondary (Codestral / DeepSeek)', type: 'coding', status: 'standby' },
 ];
 
 export function InferenceRoutingPage() {
@@ -49,8 +49,8 @@ export function InferenceRoutingPage() {
       </header>
 
       <div className="telemetry-stats-bar">
-        <MetricCard label="Modelos Disponíveis" value={models.length || '—'} sublabel="Via OpenRouter" icon={Cpu} variant="accent" />
-        <MetricCard label="Uncensored" value={uncensored.length || '—'} sublabel="Com suporte a tool calls" icon={Zap} variant="warning" />
+        <MetricCard label="Modelos Disponíveis" value={models.length || '—'} sublabel="100% Tool Call Nativo" icon={Cpu} variant="accent" />
+        <MetricCard label="Filtro Ativo" value="Strict Native" sublabel="Zero pseudo-tools" icon={Zap} variant="warning" />
         <MetricCard label="Rota Ativa" value="Auto" sublabel="Seleção inteligente" icon={CheckCircle2} variant="success" />
       </div>
 
