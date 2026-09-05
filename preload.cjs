@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('sensix', {
   getLearningLedger: () => ipcRenderer.invoke('learning:get-entries'),
   clearLearningLedger: () => ipcRenderer.invoke('learning:clear'),
   executeCommand: (cmd) => ipcRenderer.invoke('shell:execute', cmd),
+  executeShellCommand: (cmd) => ipcRenderer.invoke('shell:execute', cmd),
   previewFile: (filePath) => ipcRenderer.invoke('file:read-preview', filePath),
   getLedgerEntries: () => ipcRenderer.invoke('learning:get-entries'),
   window: {

@@ -21,6 +21,11 @@ export function Composer({
   }, [input]);
 
   const handleKeyDown = (e) => {
+    if (e.key === 'Escape' && isSending) {
+      e.preventDefault();
+      onCancel();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!isSending) onSend();

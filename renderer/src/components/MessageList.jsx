@@ -160,13 +160,13 @@ export function MessageList({ messages = [], isThinking = false }) {
 
   return (
     <div className="messages-scroll-area">
-      {messages.map((msg, index) => {
-        const isUser = msg.role === 'user';
-        const steps = Array.isArray(msg.steps) ? msg.steps : [];
+      {messages.filter(Boolean).map((msg, index) => {
+        const isUser = msg?.role === 'user';
+        const steps = Array.isArray(msg?.steps) ? msg.steps : [];
 
         return (
           <article
-            key={msg.id || index}
+            key={msg?.id || index}
             className={`chat-message-row ${isUser ? 'message-user' : 'message-assistant'} fade-in`}
           >
             <div className={`message-avatar ${isUser ? 'avatar-user' : 'avatar-assistant'}`} aria-hidden="true">

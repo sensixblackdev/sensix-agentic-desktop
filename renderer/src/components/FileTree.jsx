@@ -27,18 +27,19 @@ export function FileTree({ items = [], onSelectFile, selectedPath = '' }) {
 
   return (
     <div className="file-tree-container" role="tree">
-      {items.map((item) => {
+      {items.filter(Boolean).map((item, idx) => {
+        const name = item.name || `item_${idx}`;
         const isDir = item.type === 'directory';
-        const isExpanded = Boolean(expandedFolders[item.name]);
-        const isSelected = selectedPath === item.name;
+        const isExpanded = Boolean(expandedFolders[name]);
+        const isSelected = selectedPath === name;
 
         return (
-          <div key={item.name} className="tree-node">
+          <div key={item.relativePath || name} className="tree-node">
             <button
               type="button"
               className={`tree-item-btn ${isSelected ? 'selected' : ''}`}
               onClick={() => {
-                if (isDir) toggleFolder(item.name);
+                if (isDir) toggleFolder(name);
                 else if (onSelectFile) onSelectFile(item);
               }}
               role="treeitem"
@@ -53,10 +54,10 @@ export function FileTree({ items = [], onSelectFile, selectedPath = '' }) {
               ) : (
                 <>
                   <span className="file-spacer"></span>
-                  {getFileIcon(item.name)}
+                  {getFileIcon(name)}
                 </>
               )}
-              <span className="tree-item-name">{item.name}</span>
+              <span className="tree-item-name">{name}</span>
               {item.size !== undefined && (
                 <span className="tree-item-size">{Math.round(item.size / 1024) || 1} KB</span>
               )}

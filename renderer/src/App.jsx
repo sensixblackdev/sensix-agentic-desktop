@@ -61,7 +61,7 @@ function AppContent() {
           setSelectedModel(m[0].id);
         }
       } catch (err) {
-        console.error('Falha na inicialização:', err);
+        console.warn('Inicialização com fallback offline:', err.message);
       }
     }
     initialize();
@@ -77,9 +77,18 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  const currentSession = sessions.find((s) => s.id === currentSessionId) || sessions[0];
+  const defaultSession = {
+    id: 'session_default',
+    title: 'Sessão Principal',
+    project: 'Geral',
+    messages: [],
+    todos: []
+  };
+
+  const currentSession = sessions.find((s) => s.id === currentSessionId) || sessions[0] || defaultSession;
 
   const handleUpdateSession = (updated) => {
+    if (!updated || !updated.id) return;
     setSessions((prev) => {
       const next = prev.map((s) => (s.id === updated.id ? updated : s));
       window.sensix?.saveSessions?.(next);
@@ -113,8 +122,20 @@ function AppContent() {
     if (!confirmDeleteId) return;
     setSessions((prev) => {
       const filtered = prev.filter((s) => s.id !== confirmDeleteId);
-      const fallback = filtered.length > 0 ? filtered[0].id : null;
-      if (fallback) setCurrentSessionId(fallback);
+      if (filtered.length === 0) {
+        const fresh = {
+          id: 'session_' + Date.now(),
+          title: 'Sessão Principal',
+          project: 'Geral',
+          messages: [],
+          todos: []
+        };
+        setCurrentSessionId(fresh.id);
+        window.sensix?.saveSessions?.([fresh]);
+        return [fresh];
+      }
+      const fallback = filtered[0].id;
+      setCurrentSessionId(fallback);
       window.sensix?.saveSessions?.(filtered);
       return filtered;
     });

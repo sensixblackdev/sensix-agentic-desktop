@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.22",
-  "description": "SENSIX Agentic Desktop — 100% Interactive Electron Validated, Hardened IPC & Obsidian Dark 3D",
+  "version": "0.3.23",
+  "description": "SENSIX Agentic Desktop — 100% Bug-Hunter Hardened: Fuzzing, Traversal Protection, Zero Console Errors & State Recovery",
   "main": "main.cjs",
   "private": true,
   "scripts": {

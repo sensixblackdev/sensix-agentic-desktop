@@ -38,7 +38,8 @@ export function FileExplorerPage({ session }) {
     setSelectedFile(item);
     setFileContent('Carregando conteúdo...');
     try {
-      const res = await window.sensix?.readFilePreview?.(item.name);
+      const targetPath = item?.relativePath || item?.name;
+      const res = await window.sensix?.readFilePreview?.(targetPath);
       if (res && res.ok) {
         setFileContent(res.content || '(Arquivo vazio)');
       } else {

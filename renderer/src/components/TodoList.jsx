@@ -6,9 +6,10 @@ export function TodoList({ todos = [] }) {
 
   if (!todos || todos.length === 0) return null;
 
-  const completed = todos.filter((t) => t.status === 'completed').length;
-  const inProgress = todos.filter((t) => t.status === 'in_progress').length;
-  const pending = todos.filter((t) => t.status === 'pending').length;
+  const validTodos = todos.filter((t) => t && typeof t === 'object');
+  const completed = validTodos.filter((t) => t.status === 'completed').length;
+  const inProgress = validTodos.filter((t) => t.status === 'in_progress').length;
+  const pending = validTodos.filter((t) => t.status === 'pending').length;
 
   return (
     <section className="todo-panel" aria-label="Plano de tarefas">
@@ -17,7 +18,7 @@ export function TodoList({ todos = [] }) {
           <ListChecks size={15} className="text-accent" />
           <span className="todo-title">Plano de Tarefas</span>
           <span className="todo-counter">
-            {completed}/{todos.length} concluídas
+            {completed}/{validTodos.length} concluídas
           </span>
         </div>
         <button
@@ -33,11 +34,11 @@ export function TodoList({ todos = [] }) {
 
       {!collapsed && (
         <ul className="todo-list" role="list">
-          {todos.map((todo) => {
+          {validTodos.map((todo, idx) => {
             const isCompleted = todo.status === 'completed';
             const isInProgress = todo.status === 'in_progress';
             return (
-              <li key={todo.id} className={`todo-item todo-${todo.status}`}>
+              <li key={todo.id || idx} className={`todo-item todo-${todo.status || 'pending'}`}>
                 <span className="todo-status-icon" aria-hidden="true">
                   {isCompleted ? (
                     <CheckCircle2 size={13} className="text-success" />
@@ -47,7 +48,7 @@ export function TodoList({ todos = [] }) {
                     <Circle size={13} className="text-dim" />
                   )}
                 </span>
-                <span className="todo-task-text">{todo.task}</span>
+                <span className="todo-task-text">{todo.task || '(Tarefa sem descrição)'}</span>
               </li>
             );
           })}

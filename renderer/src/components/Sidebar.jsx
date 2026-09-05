@@ -157,6 +157,7 @@ export function Sidebar({
         <div className="sidebar-nav-tabs">
           <button
             type="button"
+            data-tab="chat"
             className={`nav-tab-btn ${activeTab === 'chat' ? 'active' : ''}`}
             onClick={() => onSelectTab('chat')}
           >
@@ -165,6 +166,7 @@ export function Sidebar({
           </button>
           <button
             type="button"
+            data-tab="files"
             className={`nav-tab-btn ${activeTab === 'files' ? 'active' : ''}`}
             onClick={() => onSelectTab('files')}
           >
@@ -173,6 +175,7 @@ export function Sidebar({
           </button>
           <button
             type="button"
+            data-tab="learning"
             className={`nav-tab-btn ${activeTab === 'learning' ? 'active' : ''}`}
             onClick={() => onSelectTab('learning')}
           >
@@ -181,6 +184,7 @@ export function Sidebar({
           </button>
           <button
             type="button"
+            data-tab="security"
             className={`nav-tab-btn ${activeTab === 'security' ? 'active' : ''}`}
             onClick={() => onSelectTab('security')}
           >
@@ -189,6 +193,7 @@ export function Sidebar({
           </button>
           <button
             type="button"
+            data-tab="routing"
             className={`nav-tab-btn ${activeTab === 'routing' ? 'active' : ''}`}
             onClick={() => onSelectTab('routing')}
           >
@@ -197,6 +202,7 @@ export function Sidebar({
           </button>
           <button
             type="button"
+            data-tab="terminal"
             className={`nav-tab-btn ${activeTab === 'terminal' ? 'active' : ''}`}
             onClick={() => onSelectTab('terminal')}
           >
@@ -205,6 +211,7 @@ export function Sidebar({
           </button>
           <button
             type="button"
+            data-tab="workspace"
             className={`nav-tab-btn ${activeTab === 'workspace' ? 'active' : ''}`}
             onClick={() => onSelectTab('workspace')}
           >

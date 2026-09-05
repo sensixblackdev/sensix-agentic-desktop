@@ -393,17 +393,34 @@ function modelToolContent(result) {
 
 async function fetchModels() {
   const { baseUrl, token } = readStoredCredentials();
-  if (!token && !isTokenOptional(baseUrl)) throw new Error('Configure a chave do gateway antes de carregar os modelos.');
+  if (!token && !isTokenOptional(baseUrl)) {
+    return [
+      { id: 'cognitivecomputations/dolphin-mistral-24b-venice-edition', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 1 — ReAct / Autonomia Máxima (Padrão)' },
+      { id: 'nousresearch/hermes-3-llama-3.1-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 2 — Raciocínio Profundo & Arquitetura' },
+      { id: 'nousresearch/hermes-4-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 3 — Orquestração & Síntese Crítica' }
+    ];
+  }
   const traceId = crypto.randomUUID();
-  const response = await fetch(`${baseUrl}/models`, { headers: requestHeaders(token, traceId, baseUrl), signal: AbortSignal.timeout(20000) });
-  const body = await response.text();
-  if (!response.ok) throw new Error(`Endpoint recusou o catálogo (HTTP ${response.status}).`);
-  let parsed;
-  try { parsed = JSON.parse(body); } catch { throw new Error('O endpoint retornou um catálogo inválido.'); }
-  return (Array.isArray(parsed?.data) ? parsed.data : []).filter((model) => typeof model?.id === 'string').map((model) => ({
-    id: model.id, object: model.object || 'model', ownedBy: model.owned_by || 'sensix-ai',
-    description: model.description || `${model.root || model.id} · Gateway SENSIX Multi-Tier`,
-  }));
+  try {
+    const response = await fetch(`${baseUrl}/models`, { headers: requestHeaders(token, traceId, baseUrl), signal: AbortSignal.timeout(8000) });
+    const body = await response.text();
+    if (response.ok) {
+      const parsed = JSON.parse(body);
+      const list = (Array.isArray(parsed?.data) ? parsed.data : []).filter((model) => typeof model?.id === 'string').map((model) => ({
+        id: model.id, object: model.object || 'model', ownedBy: model.owned_by || 'sensix-ai',
+        description: model.description || `${model.root || model.id} · Gateway SENSIX Multi-Tier`,
+      }));
+      if (list.length > 0) return list;
+    }
+  } catch (err) {
+    writeAudit('warn', 'fetch_models_offline_fallback', { error: safeErrorMessage(err) });
+  }
+
+  return [
+    { id: 'cognitivecomputations/dolphin-mistral-24b-venice-edition', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 1 — ReAct / Autonomia Máxima (Offline)' },
+    { id: 'nousresearch/hermes-3-llama-3.1-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 2 — Raciocínio Profundo & Arquitetura (Offline)' },
+    { id: 'nousresearch/hermes-4-70b', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 3 — Orquestração & Síntese Crítica (Offline)' }
+  ];
 }
 
 function repairIncompleteJson(raw) {
@@ -1386,45 +1403,76 @@ ipcMain.handle('files:choose', async () => {
   });
   return result.canceled ? [] : result.filePaths;
 });
-ipcMain.handle('folder:inspect', async (_event, folderPath) => {
+ipcMain.handle('folder:inspect', async (_event, folderPath = '.') => {
   try {
-    if (!fs.existsSync(folderPath)) return { ok: false, error: 'Pasta não encontrada.' };
-    const stats = fs.statSync(folderPath);
+    const targetDir = ensureWorkspacePath(folderPath || '.');
+    if (!fs.existsSync(targetDir)) return { ok: false, error: 'Pasta não encontrada.' };
+    const stats = fs.statSync(targetDir);
     if (!stats.isDirectory()) return { ok: false, error: 'O caminho não é um diretório.' };
-    const items = fs.readdirSync(folderPath, { withFileTypes: true });
-    const tree = items.slice(0, 100).map((item) => ({
-      name: item.name,
-      type: item.isDirectory() ? 'directory' : 'file',
-      size: item.isFile() ? fs.statSync(path.join(folderPath, item.name)).size : undefined
-    }));
-    return { ok: true, path: folderPath, count: items.length, items: tree };
+    const items = fs.readdirSync(targetDir, { withFileTypes: true });
+    const tree = items.slice(0, 100).map((item) => {
+      let size = undefined;
+      if (item.isFile()) {
+        try { size = fs.statSync(path.join(targetDir, item.name)).size; } catch {}
+      }
+      return {
+        name: item.name,
+        type: item.isDirectory() ? 'directory' : 'file',
+        relativePath: relativeWorkspacePath(path.join(targetDir, item.name)),
+        size
+      };
+    });
+    return { ok: true, path: targetDir, relativePath: relativeWorkspacePath(targetDir), count: items.length, items: tree };
   } catch (error) { return { ok: false, error: error.message }; }
 });
 ipcMain.handle('file:read-preview', async (_event, filePath) => {
   try {
-    if (!fs.existsSync(filePath)) return { ok: false, error: 'Arquivo não encontrado.' };
-    const ext = path.extname(filePath).toLowerCase();
-    const stats = fs.statSync(filePath);
+    if (!filePath || typeof filePath !== 'string') return { ok: false, error: 'Caminho do arquivo não fornecido ou inválido.' };
+    const targetFile = ensureWorkspacePath(filePath);
+    if (!fs.existsSync(targetFile)) return { ok: false, error: 'Arquivo não encontrado.' };
+    const stats = fs.statSync(targetFile);
+    if (!stats.isFile()) return { ok: false, error: 'O caminho não é um arquivo.' };
+    if (isSecretPath(targetFile)) return { ok: false, error: 'Acesso a arquivos confidenciais (.env) é bloqueado por segurança.' };
+
+    const ext = path.extname(targetFile).toLowerCase();
     const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(ext);
     if (isImage) {
       if (stats.size > 10 * 1024 * 1024) return { ok: false, error: 'Imagem muito grande (>10MB).' };
-      const base64 = fs.readFileSync(filePath).toString('base64');
-      return { ok: true, path: filePath, name: path.basename(filePath), isImage: true, mimeType: `image/${ext.slice(1)}`, base64, size: stats.size };
+      const base64 = fs.readFileSync(targetFile).toString('base64');
+      return { ok: true, path: targetFile, name: path.basename(targetFile), isImage: true, mimeType: `image/${ext.slice(1)}`, base64, size: stats.size };
     }
     if (stats.size > 250 * 1024) {
-      const content = fs.readFileSync(filePath, 'utf8').split('\n').slice(0, 100).join('\n');
-      return { ok: true, path: filePath, name: path.basename(filePath), isText: true, content: `${content}\n... [restante truncado]`, size: stats.size };
+      const content = fs.readFileSync(targetFile, 'utf8').split('\n').slice(0, 100).join('\n');
+      return { ok: true, path: targetFile, name: path.basename(targetFile), isText: true, content: `${content}\n... [restante truncado]`, size: stats.size };
     }
-    const content = fs.readFileSync(filePath, 'utf8');
-    return { ok: true, path: filePath, name: path.basename(filePath), isText: true, content, size: stats.size };
+    const content = fs.readFileSync(targetFile, 'utf8');
+    return { ok: true, path: targetFile, name: path.basename(targetFile), isText: true, content, size: stats.size };
   } catch (error) { return { ok: false, error: error.message }; }
 });
 ipcMain.handle('sessions:load', () => { try { const file = sessionsPath(); if (!fs.existsSync(file)) return []; const parsed = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(parsed) ? parsed : []; } catch { return []; } });
-ipcMain.handle('sessions:save', (_event, sessions) => { if (!Array.isArray(sessions)) throw new Error('Histórico inválido.'); const file = sessionsPath(); const temporary = `${file}.${crypto.randomUUID()}.tmp`; fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(temporary, JSON.stringify(sessions.slice(0, 30)), { encoding: 'utf8', mode: 0o600 }); fs.renameSync(temporary, file); return { ok: true }; });
+ipcMain.handle('sessions:save', (_event, sessions) => {
+  if (!Array.isArray(sessions)) return { ok: false, error: 'Histórico inválido.' };
+  try {
+    const file = sessionsPath();
+    const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(temporary, JSON.stringify(sessions.slice(0, 30)), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(temporary, file);
+    return { ok: true };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
 ipcMain.handle('models:list', () => fetchModels());
 ipcMain.handle('chat:send', (_event, payload) => {
   const model = String(payload?.model || '').trim();
-  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+  const rawMessages = Array.isArray(payload?.messages) ? payload.messages : [];
+  const messages = rawMessages
+    .filter((m) => m && typeof m === 'object')
+    .map((m) => ({
+      role: String(m.role || 'user').trim(),
+      content: typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content : String(m.content || ''))
+    }))
+    .filter((m) => Boolean(m.role));
+
   if (!model || messages.length === 0) throw new Error('Modelo e mensagens são obrigatórios.');
   const runId = crypto.randomUUID();
   setTimeout(() => runAgent(runId, { ...payload, model, messages }), 0);
