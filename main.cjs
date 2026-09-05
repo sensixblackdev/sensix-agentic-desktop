@@ -1324,20 +1324,48 @@ async function runAgent(runId, payload) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1320, height: 860, minWidth: 980, minHeight: 640, backgroundColor: '#09090b', title: 'SENSIX Agentic Desktop',
-    frame: false,
-    autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true },
+    width: 1320,
+    height: 860,
+    minWidth: 980,
+    minHeight: 640,
+    backgroundColor: '#09090b',
+    title: 'SENSIX Agentic Desktop',
+    frame: true,
+    show: true,
+    autoHideMenuBar: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      webSecurity: false,
+    },
   });
-  mainWindow.setMenu(null);
+
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    console.log(`[RENDERER CONSOLE ${level}] ${message} (${sourceId}:${line})`);
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[DID-FAIL-LOAD] ${errorCode}: ${errorDescription} (${validatedURL})`);
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) shell.openExternal(url);
     return { action: 'deny' };
   });
+
   const indexPath = fs.existsSync(path.join(__dirname, 'renderer', 'dist', 'index.html'))
     ? path.join(__dirname, 'renderer', 'dist', 'index.html')
     : path.join(__dirname, 'renderer', 'index.html');
+
   mainWindow.loadFile(indexPath);
+  mainWindow.show();
+  mainWindow.focus();
+
+  if (process.argv.includes('--dev') || !app.isPackaged) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 

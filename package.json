@@ -1,6 +1,6 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "SENSIX Agentic Desktop \u2014 Modular JSX/React Architecture, Obsidian 3D Modals, Reactive Toasts & Lucide System",
   "main": "main.cjs",
   "private": true,
@@ -43,5 +43,12 @@
     "win": {
       "target": "nsis"
     }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "electron-winstaller"
+    ]
   }
 }
