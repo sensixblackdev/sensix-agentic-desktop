@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.20",
-  "description": "SENSIX Agentic Desktop \u2014 Modular JSX/React Architecture, Obsidian 3D Modals, Reactive Toasts & Lucide System",
+  "version": "0.3.21",
+  "description": "SENSIX Agentic Desktop — Complete Obsidian Dark 3D Design System, Popover Selects, Lucide Vector Icons & Zero Test Pollution",
   "main": "main.cjs",
   "private": true,
   "scripts": {

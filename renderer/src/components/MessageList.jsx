@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { ToolTimeline } from './ToolTimeline';
-import { Copy, Check, Terminal, FileCode, CheckCircle2 } from 'lucide-react';
+import { Copy, Check, Sparkles, User, Bot } from 'lucide-react';
 
 function CodeBlock({ code, lang }) {
   const [copied, setCopied] = React.useState(false);
@@ -30,7 +30,12 @@ function CodeBlock({ code, lang }) {
 }
 
 function renderContentBlocks(text = '') {
-  const lines = String(text || '').split(/\r?\n/);
+  let cleanText = String(text || '');
+  if (cleanText.includes('\\n') && !cleanText.includes('\n')) {
+    cleanText = cleanText.replace(/\\n/g, '\n');
+  }
+
+  const lines = cleanText.split(/\r?\n/);
   const blocks = [];
   let inCode = false;
   let codeLang = '';
@@ -50,7 +55,7 @@ function renderContentBlocks(text = '') {
     paragraph = [];
   };
 
-  lines.forEach((line, idx) => {
+  lines.forEach((line) => {
     const trimmed = line.trim();
     if (trimmed.startsWith('```')) {
       flushParagraph();
@@ -130,7 +135,9 @@ export function MessageList({ messages = [], isThinking = false }) {
   if (!messages || messages.length === 0) {
     return (
       <div className="empty-chat-welcome fade-in">
-        <div className="welcome-brand-mark">S</div>
+        <div className="welcome-brand-mark">
+          <Sparkles size={24} className="text-accent" />
+        </div>
         <h2>SENSIX Agentic Desktop</h2>
         <p>Ambiente agêntico autônomo com auto-healing, execução paralela e RAG contextual.</p>
         <div className="welcome-shortcuts">
@@ -162,12 +169,15 @@ export function MessageList({ messages = [], isThinking = false }) {
             key={msg.id || index}
             className={`chat-message-row ${isUser ? 'message-user' : 'message-assistant'} fade-in`}
           >
-            <div className="message-avatar" aria-hidden="true">
-              {isUser ? 'U' : 'S'}
+            <div className={`message-avatar ${isUser ? 'avatar-user' : 'avatar-assistant'}`} aria-hidden="true">
+              {isUser ? <User size={15} /> : <Bot size={16} className="text-accent" />}
             </div>
             <div className="message-bubble-wrapper">
               <div className="message-meta-info">
-                <span>{isUser ? 'Você' : 'SENSIX Agent'}</span>
+                <span className="sender-name">{isUser ? 'Você' : 'SENSIX Agent'}</span>
+                {msg.timestamp && (
+                  <span className="message-time">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                )}
               </div>
 
               {steps.length > 0 && <ToolTimeline steps={steps} />}

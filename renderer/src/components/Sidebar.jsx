@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Plus,
   Sparkles,
@@ -13,7 +13,10 @@ import {
   Cpu,
   Terminal,
   Command,
-  Keyboard
+  Keyboard,
+  ChevronDown,
+  Check,
+  FolderPlus
 } from 'lucide-react';
 
 export function Sidebar({
@@ -36,10 +39,31 @@ export function Sidebar({
   activeTab = 'chat',
   onSelectTab
 }) {
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const projectDropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target)) {
+        setProjectDropdownOpen(false);
+      }
+    }
+    if (projectDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [projectDropdownOpen]);
+
   const filteredSessions = sessions.filter((s) => {
     if (selectedProject === 'all') return true;
     return (s.project || 'Geral') === selectedProject;
   });
+
+  const currentProjectName = selectedProject === 'all' 
+    ? 'Todos os projetos' 
+    : (projects.find(p => p.name === selectedProject)?.name || selectedProject || 'Todos os projetos');
 
   return (
     <aside className="sidebar" aria-label="Navegação do agente">
@@ -55,26 +79,79 @@ export function Sidebar({
           <kbd>Ctrl N</kbd>
         </button>
 
-        <div className="project-filter-box">
+        <div className="project-filter-box" ref={projectDropdownRef}>
           <div className="project-filter-head">
             <span>Projeto</span>
             <button type="button" className="text-action-link" onClick={onNewProject}>
               Novo
             </button>
           </div>
-          <select
-            className="project-filter-select"
-            value={selectedProject}
-            onChange={(e) => onSelectProject(e.target.value)}
-            aria-label="Filtrar por projeto"
-          >
-            <option value="all">Todos os projetos</option>
-            {projects.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+
+          <div className="custom-select-container">
+            <button
+              type="button"
+              className={`custom-select-trigger ${projectDropdownOpen ? 'open' : ''}`}
+              onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
+              aria-expanded={projectDropdownOpen}
+              aria-label="Selecionar projeto"
+            >
+              <div className="trigger-label-group">
+                <FolderKanban size={13} className="text-accent" />
+                <span className="trigger-current-label">{currentProjectName}</span>
+              </div>
+              <ChevronDown size={13} className={`trigger-chevron ${projectDropdownOpen ? 'rotate' : ''}`} />
+            </button>
+
+            {projectDropdownOpen && (
+              <div className="custom-dropdown-popover fade-in" style={{ width: '100%', left: 0, top: '100%', marginTop: 4 }}>
+                <div className="popover-options-list" style={{ maxHeight: 200 }}>
+                  <button
+                    type="button"
+                    className={`popover-option-item ${selectedProject === 'all' ? 'selected' : ''}`}
+                    onClick={() => {
+                      onSelectProject('all');
+                      setProjectDropdownOpen(false);
+                    }}
+                  >
+                    <span className="option-name">Todos os projetos</span>
+                    {selectedProject === 'all' && <Check size={13} className="text-accent" />}
+                  </button>
+
+                  {projects.map((p) => {
+                    const isSelected = selectedProject === p.name;
+                    return (
+                      <button
+                        key={p.name}
+                        type="button"
+                        className={`popover-option-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => {
+                          onSelectProject(p.name);
+                          setProjectDropdownOpen(false);
+                        }}
+                      >
+                        <span className="option-name">{p.name}</span>
+                        {isSelected && <Check size={13} className="text-accent" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="popover-footer-actions">
+                  <button
+                    type="button"
+                    className="popover-action-btn"
+                    onClick={() => {
+                      setProjectDropdownOpen(false);
+                      onNewProject();
+                    }}
+                  >
+                    <FolderPlus size={12} className="text-accent" />
+                    <span>Criar novo projeto...</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="sidebar-nav-tabs">
