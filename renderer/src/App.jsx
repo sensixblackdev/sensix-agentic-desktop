@@ -88,10 +88,20 @@ function AppContent() {
 
   const currentSession = sessions.find((s) => s.id === currentSessionId) || sessions[0] || defaultSession;
 
-  const handleUpdateSession = (updated) => {
-    if (!updated || !updated.id) return;
+  const handleUpdateSession = (updatedOrUpdater) => {
+    if (!updatedOrUpdater) return;
     setSessions((prev) => {
-      const next = prev.map((s) => (s.id === updated.id ? updated : s));
+      let targetId = currentSessionId;
+      let next;
+      if (typeof updatedOrUpdater === 'function') {
+        next = prev.map((s) => {
+          if (s.id !== targetId) return s;
+          return updatedOrUpdater(s);
+        });
+      } else {
+        targetId = updatedOrUpdater.id;
+        next = prev.map((s) => (s.id === targetId ? updatedOrUpdater : s));
+      }
       window.sensix?.saveSessions?.(next);
       return next;
     });

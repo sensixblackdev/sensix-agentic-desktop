@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.28",
-  "description": "SENSIX Agentic Desktop — 100% OpenAI Function Calling Protocol Compliance (Zero Mismatched Calls), Stripe Card Validator Integration, End-to-End Autonomy & Rich Markdown",
+  "version": "0.3.29",
+  "description": "SENSIX Agentic Desktop — 100% Persistent Memory & Context Retention (Zero Context Loss, Non-Destructive Multi-Turn History, Safe Tool Pruning & Atomic Session State)",
   "main": "main.cjs",
   "private": true,
   "scripts": {

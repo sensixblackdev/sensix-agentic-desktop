@@ -23,52 +23,68 @@ export function ChatPage({
   const [activeRunId, setActiveRunId] = useState(null);
   const { addToast } = useToast();
 
+  const sessionRef = React.useRef(session);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
   useEffect(() => {
     const handleChatEvent = (event) => {
-      if (!event || !session) return;
+      if (!event) return;
 
       if (event.type === 'tool_start') {
-        const updatedMessages = [...(session.messages || [])];
-        const lastMsg = updatedMessages[updatedMessages.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant') {
-          if (!Array.isArray(lastMsg.steps)) lastMsg.steps = [];
-          lastMsg.steps.push({
-            id: event.toolId,
-            tool: event.tool,
-            description: event.description,
-            status: 'running'
-          });
-          onUpdateSession({ ...session, messages: updatedMessages });
-        }
+        onUpdateSession((prev) => {
+          const messages = [...(prev.messages || [])];
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant') {
+            const steps = Array.isArray(lastMsg.steps) ? [...lastMsg.steps] : [];
+            steps.push({
+              id: event.toolId,
+              tool: event.tool,
+              description: event.description,
+              status: 'running'
+            });
+            messages[messages.length - 1] = { ...lastMsg, steps };
+          }
+          return { ...prev, messages };
+        });
         setRunStatus(event.description || `Executando ${event.tool}...`);
       }
 
       if (event.type === 'tool_done') {
-        const updatedMessages = [...(session.messages || [])];
-        const lastMsg = updatedMessages[updatedMessages.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant' && Array.isArray(lastMsg.steps)) {
-          const step = lastMsg.steps.find((s) => s.id === event.toolId);
-          if (step) {
-            step.status = event.ok ? 'done' : 'error';
-            step.summary = event.summary;
-            step.diff = event.diff || null;
+        onUpdateSession((prev) => {
+          const messages = [...(prev.messages || [])];
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant' && Array.isArray(lastMsg.steps)) {
+            const steps = lastMsg.steps.map((s) => (s.id === event.toolId ? {
+              ...s,
+              status: event.ok ? 'done' : 'error',
+              summary: event.summary,
+              diff: event.diff || null
+            } : s));
+            messages[messages.length - 1] = { ...lastMsg, steps };
           }
-          onUpdateSession({ ...session, messages: updatedMessages });
-        }
+          return { ...prev, messages };
+        });
         setRunStatus(event.ok ? `${event.tool} concluída` : `${event.tool} falhou`);
       }
 
       if (event.type === 'todo_update') {
-        onUpdateSession({ ...session, todos: event.todos });
+        onUpdateSession((prev) => ({ ...prev, todos: event.todos }));
       }
 
       if (event.type === 'token') {
-        const updatedMessages = [...(session.messages || [])];
-        const lastMsg = updatedMessages[updatedMessages.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant') {
-          lastMsg.content = (lastMsg.content || '') + (event.content || '');
-          onUpdateSession({ ...session, messages: updatedMessages });
-        }
+        onUpdateSession((prev) => {
+          const messages = [...(prev.messages || [])];
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant') {
+            messages[messages.length - 1] = {
+              ...lastMsg,
+              content: (lastMsg.content || '') + (event.content || '')
+            };
+          }
+          return { ...prev, messages };
+        });
       }
 
       if (event.type === 'done' || event.type === 'cancelled' || event.type === 'error') {
@@ -76,17 +92,33 @@ export function ChatPage({
         setActiveRunId(null);
         setRunStatus('');
         if (event.type === 'done') {
+          onUpdateSession((prev) => {
+            const messages = [...(prev.messages || [])];
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.content && Array.isArray(lastMsg.steps) && lastMsg.steps.length > 0) {
+              messages[messages.length - 1] = {
+                ...lastMsg,
+                content: `Execução agêntica concluída com ${lastMsg.steps.length} etapas executadas no workspace.`
+              };
+            }
+            return { ...prev, messages };
+          });
           addToast({ type: 'success', title: 'Tarefa Concluída', message: 'O agente finalizou o plano com sucesso.' });
         } else if (event.type === 'cancelled') {
           addToast({ type: 'info', title: 'Cancelado', message: 'Execução interrompida pelo usuário.' });
         } else if (event.type === 'error') {
-          const updatedMessages = [...(session.messages || [])];
-          const lastMsg = updatedMessages[updatedMessages.length - 1];
-          if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.content) {
-            lastMsg.content = `Falha na execução: ${event.message || 'Erro de resposta do modelo.'}`;
-            lastMsg.isError = true;
-            onUpdateSession({ ...session, messages: updatedMessages });
-          }
+          onUpdateSession((prev) => {
+            const messages = [...(prev.messages || [])];
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.content) {
+              messages[messages.length - 1] = {
+                ...lastMsg,
+                content: `Falha na execução: ${event.message || 'Erro de resposta do modelo.'}`,
+                isError: true
+              };
+            }
+            return { ...prev, messages };
+          });
           addToast({ type: 'error', title: 'Erro de Execução', message: event.message || 'Falha na resposta do agente.' });
         }
       }
@@ -96,7 +128,7 @@ export function ChatPage({
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [session, onUpdateSession, addToast]);
+  }, [onUpdateSession, addToast]);
 
   const handleSend = async () => {
     const trimmed = input.trim();
@@ -107,6 +139,7 @@ export function ChatPage({
       return;
     }
 
+    const currentSess = sessionRef.current || session;
     const runId = 'run_' + Date.now();
     setActiveRunId(runId);
     setIsSending(true);
@@ -125,8 +158,8 @@ export function ChatPage({
       steps: []
     };
 
-    const nextMessages = [...(session.messages || []), userMessage, assistantMessage];
-    onUpdateSession({ ...session, messages: nextMessages });
+    const nextMessages = [...(currentSess.messages || []), userMessage, assistantMessage];
+    onUpdateSession({ ...currentSess, messages: nextMessages });
     setInput('');
     setAttachments([]);
     setRunStatus('Iniciando raciocínio agêntico...');
@@ -134,7 +167,7 @@ export function ChatPage({
     try {
       await window.sensix?.sendChat?.({
         runId,
-        sessionId: session.id,
+        sessionId: currentSess.id,
         messages: nextMessages.slice(0, -1),
         model: selectedModel,
         runMode,
