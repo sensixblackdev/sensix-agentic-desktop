@@ -1466,7 +1466,11 @@ ipcMain.handle('directives:get-stats', () => getDirectivesRAGStats());
 ipcMain.handle('directives:invalidate', (_event, folderPath) => invalidateDirectivesCache(folderPath));
 
 ipcMain.handle('telemetry:get-stats', () => telemetry.getTelemetryStats());
-ipcMain.handle('telemetry:get-events', (_event, filter) => telemetry.getTelemetryEvents(filter));
+ipcMain.handle('telemetry:get-events', (_event, filter) => {
+  const events = telemetry.getTelemetryEvents(filter);
+  const stats = telemetry.getTelemetryStats();
+  return { events: Array.isArray(events) ? events : [], stats };
+});
 ipcMain.handle('telemetry:open-dir', () => {
   const dir = telemetry.getLogsDir();
   shell.openPath(dir);
@@ -1475,6 +1479,10 @@ ipcMain.handle('telemetry:open-dir', () => {
 ipcMain.handle('telemetry:clear', () => telemetry.clearTelemetry());
 
 ipcMain.handle('learning:get-stats', () => learning.getLearningStats());
+ipcMain.handle('learning:get-entries', () => {
+  const stats = learning.getLearningStats();
+  return { lessons: Array.isArray(stats?.lessons) ? stats.lessons : [], stats };
+});
 ipcMain.handle('learning:clear', () => learning.clearLearningLedger());
 
 ipcMain.handle('window:minimize', () => mainWindow?.minimize());
@@ -1503,9 +1511,9 @@ ipcMain.handle('shell:execute', async (_evt, cmd) => {
     }
   }
   return new Promise((resolve) => {
-    const { exec } = require('child_process');
-    exec(`powershell.exe -NonInteractive -NoProfile -Command "${cmd.replace(/"/g, '\"')}"`,
-      { timeout: 15000, maxBuffer: 512 * 1024 },
+    const { execFile } = require('child_process');
+    execFile('powershell.exe', ['-NonInteractive', '-NoProfile', '-Command', cmd],
+      { timeout: 15000, maxBuffer: 512 * 1024, cwd: WORKSPACE_ROOT },
       (error, stdout, stderr) => {
         resolve({
           ok: !error,

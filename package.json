@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.21",
-  "description": "SENSIX Agentic Desktop — Complete Obsidian Dark 3D Design System, Popover Selects, Lucide Vector Icons & Zero Test Pollution",
+  "version": "0.3.22",
+  "description": "SENSIX Agentic Desktop — 100% Interactive Electron Validated, Hardened IPC & Obsidian Dark 3D",
   "main": "main.cjs",
   "private": true,
   "scripts": {
