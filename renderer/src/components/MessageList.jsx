@@ -182,9 +182,16 @@ export function MessageList({ messages = [], isThinking = false }) {
 
               {steps.length > 0 && <ToolTimeline steps={steps} />}
 
-              <div className="message-body-content">
-                {renderContentBlocks(msg.content)}
-              </div>
+              {msg.content ? (
+                <div className={`message-body-content ${msg.isError ? 'message-body-error' : ''}`}>
+                  {renderContentBlocks(msg.content)}
+                </div>
+              ) : !isUser ? (
+                <div className="message-body-content message-body-loading">
+                  <div className="thinking-pulse-dot"></div>
+                  <span>Agente raciocinando...</span>
+                </div>
+              ) : null}
             </div>
           </article>
         );

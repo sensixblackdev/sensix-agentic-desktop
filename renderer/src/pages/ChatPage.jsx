@@ -80,6 +80,13 @@ export function ChatPage({
         } else if (event.type === 'cancelled') {
           addToast({ type: 'info', title: 'Cancelado', message: 'Execução interrompida pelo usuário.' });
         } else if (event.type === 'error') {
+          const updatedMessages = [...(session.messages || [])];
+          const lastMsg = updatedMessages[updatedMessages.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.content) {
+            lastMsg.content = `Falha na execução: ${event.message || 'Erro de resposta do modelo.'}`;
+            lastMsg.isError = true;
+            onUpdateSession({ ...session, messages: updatedMessages });
+          }
           addToast({ type: 'error', title: 'Erro de Execução', message: event.message || 'Falha na resposta do agente.' });
         }
       }

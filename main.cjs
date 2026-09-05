@@ -98,6 +98,9 @@ const NON_NATIVE_TOOL_MODELS = new Set([
   'deepseek/deepseek-r1',
 ]);
 
+// Modelos detectados em tempo de execução que exigem prompt ReAct em vez de tools param
+const KNOWN_REACT_MODELS = new Set();
+
 function isNonNativeToolModel(modelId) {
   if (!modelId || typeof modelId !== 'string') return false;
   const idLower = modelId.toLowerCase();

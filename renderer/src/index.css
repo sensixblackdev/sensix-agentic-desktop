@@ -1296,6 +1296,8 @@ select option:checked, select option:hover {
    1. Chat Header & Model Pickers
    ───────────────────────────────────────────────────────────── */
 .chat-header {
+  position: relative;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1307,6 +1309,7 @@ select option:checked, select option:hover {
 }
 
 .model-picker-area {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2447,6 +2450,21 @@ select option:checked, select option:hover {
 
 .message-assistant .message-body-content {
   border-top-left-radius: 2px;
+}
+
+.message-body-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 10px 14px;
+}
+
+.message-body-error {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+  color: #fca5a5;
 }
 
 .message-paragraph {
