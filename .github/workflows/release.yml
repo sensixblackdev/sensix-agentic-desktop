@@ -19,7 +19,30 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: pnpm run check
+      - run: pnpm test
+      - run: pnpm run test:e2e
       - run: pnpm exec electron-builder --win nsis --publish never --config.directories.output=release
+      - name: Install packaged application silently
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem 'release' -Filter '*.exe' | Where-Object { $_.Name -notmatch 'Uninstall' } | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer was not generated.' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'sensix-installed'
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Installer failed with exit code $($process.ExitCode)." }
+          $executable = Get-ChildItem $installDir -Filter '*.exe' -Recurse | Where-Object { $_.Name -notmatch 'Uninstall' } | Select-Object -First 1
+          if (-not $executable) { throw 'Installed executable was not found.' }
+          "SENSIX_PACKAGED_EXE=$($executable.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SENSIX_INSTALL_DIR=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Smoke installed Electron UI
+        run: pnpm run test:e2e
+      - name: Teardown installed application
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process | Where-Object { $_.ProcessName -like 'SENSIX*' } | Stop-Process -Force -ErrorAction SilentlyContinue
+          $uninstaller = Get-ChildItem $env:SENSIX_INSTALL_DIR -Filter 'Uninstall*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($uninstaller) { Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -WindowStyle Hidden }
       - name: Generate release manifest and checksum
         shell: pwsh
         run: |

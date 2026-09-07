@@ -10,7 +10,9 @@
     "build:renderer": "vite build --config renderer/vite.config.mjs",
     "build": "npm run build:renderer",
     "dev:renderer": "vite --config renderer/vite.config.mjs",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs && node --check runtime-core.cjs",
+    "test": "node --test tests/runtime-core.test.cjs",
+    "test:e2e": "playwright test tests/electron-smoke.spec.cjs --workers=1"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",
+    "@playwright/test": "^1.55.0",
     "electron": "^39.2.6",
     "electron-builder": "^26.15.3",
     "vite": "^6.0.0"
@@ -33,6 +36,7 @@
       "telemetry.cjs",
       "directives-rag.cjs",
       "learning-ledger.cjs",
+      "runtime-core.cjs",
       "renderer/**/*",
       "README.md"
     ],
@@ -43,12 +47,5 @@
     "win": {
       "target": "nsis"
     }
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild",
-      "electron-winstaller"
-    ]
   }
 }

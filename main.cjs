@@ -6,6 +6,7 @@ const { spawn } = require('node:child_process');
 const telemetry = require('./telemetry.cjs');
 const { getDirectivesContext, getDirectivesRAGStats, invalidateDirectivesCache } = require('./directives-rag.cjs');
 const learning = require('./learning-ledger.cjs');
+const runtimeCore = require('./runtime-core.cjs');
 
 const DEFAULT_BASE_URL = process.env.SENSIX_API_BASE_URL || 'https://api.sensix.it.com/v1';
 const LEGACY_BASE_URL = 'http://174.78.228.101:40746/v1';
@@ -139,11 +140,7 @@ function sessionsPath() { return path.join(app.getPath('userData'), 'sensix-sess
 function auditPath() { return path.join(app.getPath('userData'), 'logs', 'agent-audit.log'); }
 
 function redactSecrets(value) {
-  return String(value ?? '')
-    .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]')
-    .replace(/\b(?:ghp_|sk-|hf_|vcp_)[A-Za-z0-9_-]{12,}\b/g, '[REDACTED_SECRET]')
-    .replace(/-----BEGIN [^-]+ PRIVATE KEY-----[\s\S]*?-----END [^-]+ PRIVATE KEY-----/g, '[REDACTED_PRIVATE_KEY]')
-    .replace(/<think>[\s\S]*?<\/think>/gi, '');
+  return runtimeCore.redactSecrets(value);
 }
 
 function writeAudit(level, message, details = {}, traceId = crypto.randomUUID()) {
@@ -171,13 +168,7 @@ function isTokenOptional(baseUrl) {
 }
 
 function normalizeBaseUrl(value) {
-  const candidate = String(value || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
-  const parsed = new URL(candidate);
-  const allowedHttp = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
-  if (parsed.protocol !== 'https:' && !(allowedHttp && parsed.protocol === 'http:')) {
-    throw new Error('A URL deve usar HTTPS; HTTP é permitido apenas para localhost.');
-  }
-  return candidate;
+  return runtimeCore.normalizeBaseUrl(value, DEFAULT_BASE_URL);
 }
 
 function readStoredCredentials() {
@@ -725,19 +716,7 @@ async function replaceInFileTool(args) {
 }
 
 function validateShellCommand(command) {
-  const normalized = String(command || '').trim();
-  if (!normalized) throw new Error('Comando vazio.');
-  const forbidden = [
-    /(?:^|[\\/])\.ssh(?:[\\/]|$)/i, /\bid_(?:rsa|ed25519)\b/i,
-    /(?:^|[\\/])SECURE[\\/]VAULT(?:[\\/]|$)/i,
-    /(?:^|[\s'"`])[^\s'"`]*\.env(?:\.|\b)/i,
-    /\b(?:remove-item|rm|rmdir|rd|del|erase)\b[^\n]*(?:-recurse|-r\b|\/s\b|\/q\b)/i,
-    /\bgit\s+(?:reset\s+--hard|clean\s+-[^\s]*f|checkout\s+--)/i,
-    /\b(?:format|diskpart|shutdown|stop-computer|restart-computer)\b/i,
-    /\b(?:get-childitem|gci|dir)\s+env:/i,
-  ];
-  if (forbidden.some((pattern) => pattern.test(normalized))) throw new Error('Comando bloqueado pelos guardrails de segurança.');
-  return normalized;
+  return runtimeCore.validateShellCommand(command);
 }
 
 async function shellExecTool(args, activeRun) {
@@ -868,99 +847,7 @@ async function executeTool(name, args, activeRun) {
 }
 
 function ensureValidToolMessageOrder(messages) {
-  if (!Array.isArray(messages)) return [];
-  const result = [];
-
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-    if (!msg) continue;
-
-    // Se for mensagem de assistente com tool_calls
-    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-      const validCalls = msg.tool_calls.map((c, idx) => {
-        const id = (typeof c?.id === 'string' && c.id.trim()) ? c.id.trim() : `call_${crypto.randomUUID().slice(0, 8)}_${idx}`;
-        return { ...c, id };
-      });
-
-      const assistantMsg = {
-        ...msg,
-        tool_calls: validCalls,
-      };
-      result.push(assistantMsg);
-
-      const callIds = new Set(validCalls.map((c) => c.id));
-      const answeredCallIds = new Set();
-      let j = i + 1;
-
-      while (j < messages.length && messages[j]?.role === 'tool') {
-        const toolMsg = messages[j];
-        let toolCallId = toolMsg.tool_call_id;
-
-        if (callIds.has(toolCallId)) {
-          answeredCallIds.add(toolCallId);
-          result.push(toolMsg);
-        } else if (!toolCallId) {
-          const unassigned = validCalls.find((c) => !answeredCallIds.has(c.id));
-          if (unassigned) {
-            answeredCallIds.add(unassigned.id);
-            result.push({ ...toolMsg, tool_call_id: unassigned.id });
-          }
-        }
-        j++;
-      }
-
-      // Se algum tool_call ficou sem resposta, inserir resposta sintética para conformidade estrita da API
-      for (const call of validCalls) {
-        if (!answeredCallIds.has(call.id)) {
-          result.push({
-            role: 'tool',
-            tool_call_id: call.id,
-            name: call.function?.name || 'tool',
-            content: JSON.stringify({ ok: false, error: 'Operação de ferramenta concluída ou interrompida.' })
-          });
-        }
-      }
-
-      i = j - 1;
-      continue;
-    }
-
-    // Se for mensagem 'tool' solta (sem assistente anterior correspondente)
-    if (msg.role === 'tool') {
-      result.push({
-        role: 'user',
-        content: `[RESULTADO]: ${msg.content || ''}`
-      });
-      continue;
-    }
-
-    // Limpar tool_calls vazios se existirem
-    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length === 0) {
-      const cleanMsg = { ...msg };
-      delete cleanMsg.tool_calls;
-      result.push(cleanMsg);
-      continue;
-    }
-
-    result.push(msg);
-  }
-
-  // Se a última mensagem for um assistente com tool_calls não respondidas
-  if (result.length > 0) {
-    const last = result[result.length - 1];
-    if (last.role === 'assistant' && Array.isArray(last.tool_calls) && last.tool_calls.length > 0) {
-      for (const call of last.tool_calls) {
-        result.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          name: call.function?.name || 'tool',
-          content: JSON.stringify({ ok: false, error: 'Aguardando execução...' })
-        });
-      }
-    }
-  }
-
-  return result;
+  return runtimeCore.ensureValidToolMessageOrder(messages);
 }
 
 async function requestAgentCompletion(baseUrl, token, messages, signal, traceId, model, { tools = TOOL_DEFINITIONS, toolChoice = 'auto', runId = null } = {}) {
@@ -1622,7 +1509,7 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true);
   setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(false); }, 800);
 
-  if (process.argv.includes('--dev') || !app.isPackaged) {
+  if ((process.argv.includes('--dev') || !app.isPackaged) && process.env.SENSIX_E2E !== '1') {
     mainWindow.webContents.openDevTools({ mode: 'right' });
   }
 
@@ -1902,7 +1789,7 @@ ipcMain.handle('security:audit', () => {
   let csp = '';
   try {
     const html = fs.readFileSync(indexFile, 'utf8');
-    csp = html.match(/Content-Security-Policy["'][^>]*content=["']([^"']+)/i)?.[1] || '';
+    csp = html.match(/Content-Security-Policy["'][^>]*content=(["'])([\s\S]*?)\1/i)?.[2] || '';
   } catch {}
 
   const checks = [
