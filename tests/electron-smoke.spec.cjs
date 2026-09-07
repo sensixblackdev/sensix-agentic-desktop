@@ -31,7 +31,7 @@ test('UI Electron inicia e expõe fluxos essenciais', async () => {
     const terminalInput = page.getByPlaceholder(/Digite um comando PowerShell/);
     await terminalInput.fill("Write-Output 'sensix-electron-terminal-ok'");
     await terminalInput.press('Enter');
-    await expect(page.getByText('sensix-electron-terminal-ok', { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.terminal-entry').last().locator('pre')).toContainText('sensix-electron-terminal-ok', { timeout: 20_000 });
   } finally {
     await electronApp.close();
   }
