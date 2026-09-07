@@ -62,3 +62,30 @@ test('ensureValidToolMessageOrder converte tool órfã em mensagem de usuário',
     { role: 'user', content: '[RESULTADO]: ok' },
   ]);
 });
+
+test('ensureValidToolMessageOrder atribui IDs ausentes e ignora respostas duplicadas', () => {
+  const result = ensureValidToolMessageOrder([
+    { role: 'assistant', content: null, tool_calls: [
+      { type: 'function', function: { name: 'read_file', arguments: '{}' } },
+      { id: 'call_fixed', type: 'function', function: { name: 'list_files', arguments: '{}' } },
+    ] },
+    { role: 'tool', name: 'read_file', content: '{"ok":true}' },
+    { role: 'tool', tool_call_id: 'call_fixed', name: 'list_files', content: '{"ok":true}' },
+    { role: 'tool', tool_call_id: 'call_fixed', name: 'list_files', content: '{"duplicate":true}' },
+  ]);
+  const assistant = result.find((message) => message.role === 'assistant');
+  const replies = result.filter((message) => message.role === 'tool');
+  assert.match(assistant.tool_calls[0].id, /^call_/);
+  assert.equal(replies.length, 2);
+  assert.equal(replies[0].tool_call_id, assistant.tool_calls[0].id);
+});
+
+test('ensureValidToolMessageOrder remove tool_calls vazio e trata entrada inválida', () => {
+  assert.deepEqual(ensureValidToolMessageOrder(null), []);
+  assert.deepEqual(ensureValidToolMessageOrder([
+    null,
+    { role: 'assistant', content: 'texto', tool_calls: [] },
+  ]), [
+    { role: 'assistant', content: 'texto' },
+  ]);
+});
