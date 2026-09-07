@@ -64,7 +64,7 @@ export function AIInlineAssistant({
             disabled={isGenerating}
             title="Selecionar Modelo de Alta Performance"
           >
-            <option value="auto">✨ Auto (Primário · Anti-Refusal & Tool Calls Nativos)</option>
+            <option value="auto">Auto (Primário · Tool Calls Nativos)</option>
             {models.length > 0 ? (
               models.filter((m) => m.id !== 'auto').map((m) => (
                 <option key={m.id} value={m.id}>

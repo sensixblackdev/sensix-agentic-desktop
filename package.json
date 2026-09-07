@@ -1,7 +1,7 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.29",
-  "description": "SENSIX Agentic Desktop — 100% Persistent Memory & Context Retention (Zero Context Loss, Non-Destructive Multi-Turn History, Safe Tool Pruning & Atomic Session State)",
+  "version": "0.3.30",
+  "description": "SENSIX Agentic Desktop — secure Electron runtime, isolated multi-session streaming, persistent projects and verified agent controls",
   "main": "main.cjs",
   "private": true,
   "scripts": {

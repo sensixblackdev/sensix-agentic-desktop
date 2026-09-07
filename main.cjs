@@ -36,7 +36,7 @@ const AGENT_SYSTEM_PROMPT = [
   '   - Comandos exatos para o usuário rodar e testar no PowerShell.',
   '7. AUTO-HEALING E RECUPERAÇÃO EM TEMPO REAL: Se a execução de qualquer ferramenta falhar (erro de sintaxe, código de saída != 0, arquivo não encontrado ou token inválido), NUNCA PARE e NUNCA responda apenas explicando o erro em texto para o usuário. Você DEVE analisar o erro imediatamente, ajustar os argumentos ou usar ferramentas alternativas (ex: no PowerShell use ";" em vez de "&&", ou use search_text/read_file) e EXECUTAR A FERRAMENTA CORRIGIDA IMEDIATAMENTE NO MESMO TURNO até concluir a tarefa com sucesso.',
   '8. EXECUÇÃO DE PONTA A PONTA (RUN DEV, BUILD E VALIDAÇÃO FACTUAL): PROIBIDO parar no meio do caminho ou responder com recomendações passivas (ex: "Ações recomendadas: execute npm run dev", "Próximos passos", "Sugestões para o usuário testar") sem você mesmo ter executado a validação no terminal (shell_exec). Se a tarefa envolve rodar dev, testar, compilar, corrigir bugs ou criar módulos, execute os testes ou scripts de verificação até o fim com shell_exec, inspecione a saída empírica e comprove o funcionamento.',
-  '9. NAVEGAÇÃO AUTORIZADA NO WORKSPACE E VAULT: O workspace oficial é D:\\WORKSPACE (código em SANDBOX/apps e SANDBOX/services, produção em PRODUCTION, documentação em Codex e configurações/credenciais canônicas em D:\\WORKSPACE\\SECURE\\VAULT) e artefatos pesados/builds em E:\\axion. Você tem permissão total para ler documentação oficial (AGENTS.md, DIRECTIVES.md, README.md) e consultar o Vault para operações técnicas do ecossistema.',
+  '9. NAVEGAÇÃO AUTORIZADA NO WORKSPACE: O workspace oficial é D:\\WORKSPACE (código em SANDBOX/apps e SANDBOX/services, produção em PRODUCTION e documentação em Codex) e artefatos pesados/builds em E:\\axion. Leia a documentação oficial (AGENTS.md, DIRECTIVES.md, README.md), mas nunca leia, reproduza ou exponha credenciais brutas do diretório SECURE\\VAULT, arquivos .env ou chaves privadas.',
   '10. RETENÇÃO TOTAL DE CONTEXTO E MEMÓRIA DE SESSÃO 100% PERSISTENTE: Você possui memória contínua de todas as mensagens, instruções, dados, chaves/credenciais e arquivos mencionados nas mensagens anteriores desta conversa. NUNCA diga que não se lembra, que perdeu o contexto ou peça para o usuário repetir informações já fornecidas em mensagens anteriores. Mantenha 100% de consistência com os pedidos prévios e utilize os dados já fornecidos no chat.',
   'Workspace autorizado: D:\\WORKSPACE e E:\\axion. Comandos destrutivos de disco e chaves SSH privadas são bloqueados pelos guardrails.',
 ].join(' ');
@@ -121,7 +121,7 @@ function isNonNativeToolModel(modelId) {
 
 // Modelos canônicos com suporte comprovado e 100% nativo a tool_calls (AUTO como primário)
 const NATIVE_TOOL_CALL_MODELS = [
-  { id: 'auto', object: 'model', ownedBy: 'sensix-core', description: '✨ Auto (Primário · Anti-Refusal & Roteamento Agêntico Inteligente)' },
+  { id: 'auto', object: 'model', ownedBy: 'sensix-core', description: 'Auto (Primário · Roteamento Agêntico Resiliente)' },
   { id: 'mistralai/devstral-2512', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 1 — Mistral Devstral 2 123B (Engenharia Agêntica & Native Tool Calls)' },
   { id: 'mistralai/codestral-2508', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 2 — Mistral Codestral 2508 (Ultra-Baixa Latência & Native Tool Calls)' },
   { id: 'deepseek/deepseek-chat', object: 'model', ownedBy: 'sensix-ai', description: 'Tier 3 — DeepSeek V3 685B MoE (SOTA Coding & Native Tool Calls)' },
@@ -175,7 +175,7 @@ function normalizeBaseUrl(value) {
   const parsed = new URL(candidate);
   const allowedHttp = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
   if (parsed.protocol !== 'https:' && !(allowedHttp && parsed.protocol === 'http:')) {
-    throw new Error('A URL deve usar HTTPS; HTTP é permitido apenas para o endpoint Vast autorizado ou localhost.');
+    throw new Error('A URL deve usar HTTPS; HTTP é permitido apenas para localhost.');
   }
   return candidate;
 }
@@ -392,6 +392,23 @@ function ensureWorkspacePath(inputPath = '.') {
   if (!isInsideWorkspace && !isInsideHeavy) {
     throw new Error('Acesso restrito ao workspace canônico (D:\\WORKSPACE) e repositório de dados/builds (E:\\axion).');
   }
+
+  let existingAncestor = target;
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    if (parent === existingAncestor) break;
+    existingAncestor = parent;
+  }
+  const canonicalAncestor = fs.realpathSync.native(existingAncestor);
+  const canonicalWorkspace = fs.realpathSync.native(WORKSPACE_ROOT);
+  const canonicalHeavy = fs.realpathSync.native(AXION_HEAVY_ROOT);
+  const canonicalWorkspaceRel = path.relative(canonicalWorkspace, canonicalAncestor);
+  const canonicalHeavyRel = path.relative(canonicalHeavy, canonicalAncestor);
+  const ancestorInsideWorkspace = !canonicalWorkspaceRel.startsWith('..') && !path.isAbsolute(canonicalWorkspaceRel);
+  const ancestorInsideHeavy = !canonicalHeavyRel.startsWith('..') && !path.isAbsolute(canonicalHeavyRel);
+  if (!ancestorInsideWorkspace && !ancestorInsideHeavy) {
+    throw new Error('Acesso bloqueado: junction ou link simbólico aponta para fora dos workspaces autorizados.');
+  }
   return target;
 }
 
@@ -406,7 +423,13 @@ function relativeWorkspacePath(target) {
   }
   return target;
 }
-function isSecretPath(target) { return /(^|[\\/])\.env(?:\.|$)/i.test(relativeWorkspacePath(target)); }
+function isSecretPath(target) {
+  const normalized = relativeWorkspacePath(target);
+  return /(^|[\\/])(?:SECURE[\\/]VAULT|\.ssh)(?:[\\/]|$)/i.test(normalized)
+    || /(^|[\\/])\.env(?:\.|$)/i.test(normalized)
+    || /(^|[\\/])id_(?:rsa|ed25519)(?:\.|$)/i.test(normalized)
+    || /\.(?:pem|p12|pfx|key|token)$/i.test(normalized);
+}
 function truncateOutput(value, limit = MAX_TOOL_OUTPUT) {
   const text = redactSecrets(value);
   if (Buffer.byteLength(text, 'utf8') <= limit) return text;
@@ -706,6 +729,8 @@ function validateShellCommand(command) {
   if (!normalized) throw new Error('Comando vazio.');
   const forbidden = [
     /(?:^|[\\/])\.ssh(?:[\\/]|$)/i, /\bid_(?:rsa|ed25519)\b/i,
+    /(?:^|[\\/])SECURE[\\/]VAULT(?:[\\/]|$)/i,
+    /(?:^|[\s'"`])[^\s'"`]*\.env(?:\.|\b)/i,
     /\b(?:remove-item|rm|rmdir|rd|del|erase)\b[^\n]*(?:-recurse|-r\b|\/s\b|\/q\b)/i,
     /\bgit\s+(?:reset\s+--hard|clean\s+-[^\s]*f|checkout\s+--)/i,
     /\b(?:format|diskpart|shutdown|stop-computer|restart-computer)\b/i,
@@ -1235,7 +1260,7 @@ async function runAgent(runId, payload) {
   if (activeModel === 'auto' || !activeModel || isNonNativeToolModel(activeModel)) {
     if (isSecurityTask) {
       activeModel = 'mistralai/devstral-2512';
-      sendChatEvent({ runId, type: 'synthesizing', message: `🛡️ Modo Auto (Anti-Refusal): selecionado ${activeModel} com imunidade a recusas e tool calls nativos...` });
+      sendChatEvent({ runId, type: 'synthesizing', message: `Modo Auto: selecionado ${activeModel} com suporte a tool calls nativos...` });
     } else if (isReasoningTask) {
       activeModel = 'deepseek/deepseek-chat';
       sendChatEvent({ runId, type: 'synthesizing', message: `Modo Auto (Raciocínio): selecionado ${activeModel} com tool calls nativos...` });
@@ -1250,6 +1275,9 @@ async function runAgent(runId, payload) {
     const { baseUrl, token } = readStoredCredentials();
     if (!token && !isTokenOptional(baseUrl)) throw new Error('Configure a chave do gateway antes de conversar.');
     let systemPrompt = AGENT_SYSTEM_PROMPT;
+    if (payload.mode === 'driven') {
+      systemPrompt += '\n\n[MODO DRIVEN CODE]: Priorize análise e alterações de código incrementais. Preserve compatibilidade, use ferramentas reais e interrompa somente diante de ambiguidade material ou risco que exija decisão humana.';
+    }
 
     // Injeção de Diretriz Anti-Refusal Primária
     if (payload.model === 'auto' || !payload.model || isSecurityTask) {
@@ -1352,7 +1380,7 @@ async function runAgent(runId, payload) {
             sendChatEvent({
               runId,
               type: 'synthesizing',
-              message: '🛡️ Anti-Refusal ativado: neutralizando recusa e comutando para Mistral Devstral com tool calls nativos...',
+              message: 'Fallback de modelo ativado: comutando para Mistral Devstral com tool calls nativos...',
             });
             writeAudit('warn', 'agent_refusal_fallback_triggered', { originalModel: activeModel, textContent }, traceId);
             telemetry.recordTelemetry({
@@ -1559,16 +1587,24 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
-      webSecurity: false,
+      sandbox: true,
+      webSecurity: true,
     },
   });
 
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    console.log(`[RENDERER CONSOLE ${level}] ${message} (${sourceId}:${line})`);
+    writeAudit(level >= 3 ? 'error' : level === 2 ? 'warn' : 'info', 'renderer_console', {
+      message,
+      line,
+      source: sourceId,
+    });
   });
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    console.error(`[DID-FAIL-LOAD] ${errorCode}: ${errorDescription} (${validatedURL})`);
+    writeAudit('error', 'renderer_load_failed', { errorCode, errorDescription, validatedURL });
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) event.preventDefault();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -1801,8 +1837,13 @@ ipcMain.handle('chat:send', (_event, payload) => {
     .filter((m) => Boolean(m.role));
 
   if (!model || messages.length === 0) throw new Error('Modelo e mensagens são obrigatórios.');
-  const runId = crypto.randomUUID();
-  setTimeout(() => runAgent(runId, { ...payload, model, messages }), 0);
+  const requestedRunId = typeof payload?.runId === 'string' && /^run_[A-Za-z0-9_-]{1,80}$/.test(payload.runId)
+    ? payload.runId
+    : null;
+  const runId = requestedRunId && !activeRuns.has(requestedRunId) ? requestedRunId : `run_${crypto.randomUUID()}`;
+  const requestedMode = payload?.mode || payload?.runMode;
+  const mode = ['normal', 'plan', 'driven'].includes(requestedMode) ? requestedMode : 'normal';
+  setTimeout(() => runAgent(runId, { ...payload, model, messages, mode }), 0);
   return { runId };
 });
 ipcMain.handle('chat:cancel', (_event, runId) => {
@@ -1853,6 +1894,39 @@ ipcMain.handle('telemetry:open-dir', () => {
 });
 ipcMain.handle('telemetry:clear', () => telemetry.clearTelemetry());
 
+ipcMain.handle('security:audit', () => {
+  const preferences = mainWindow?.webContents?.getLastWebPreferences?.() || {};
+  const sourceIndex = path.join(__dirname, 'renderer', 'index.html');
+  const builtIndex = path.join(__dirname, 'renderer', 'dist', 'index.html');
+  const indexFile = fs.existsSync(builtIndex) ? builtIndex : sourceIndex;
+  let csp = '';
+  try {
+    const html = fs.readFileSync(indexFile, 'utf8');
+    csp = html.match(/Content-Security-Policy["'][^>]*content=["']([^"']+)/i)?.[1] || '';
+  } catch {}
+
+  const checks = [
+    { id: 'context-isolation', label: 'Context Isolation', pass: preferences.contextIsolation === true, detail: `contextIsolation=${String(preferences.contextIsolation)}` },
+    { id: 'sandbox', label: 'Sandbox do Renderer', pass: preferences.sandbox === true, detail: `sandbox=${String(preferences.sandbox)}` },
+    { id: 'web-security', label: 'Web Security', pass: preferences.webSecurity !== false, detail: `webSecurity=${String(preferences.webSecurity !== false)}` },
+    { id: 'node-integration', label: 'Node Integration desativada', pass: preferences.nodeIntegration !== true, detail: `nodeIntegration=${String(Boolean(preferences.nodeIntegration))}` },
+    { id: 'csp-script', label: 'CSP sem script inline', pass: Boolean(csp) && !/script-src[^;]*unsafe-inline/i.test(csp), detail: csp || 'CSP ausente' },
+    { id: 'csp-network', label: 'Renderer sem acesso direto à rede', pass: /connect-src\s+'none'/i.test(csp), detail: /connect-src\s+'none'/i.test(csp) ? "connect-src 'none'" : 'connect-src permite rede' },
+    { id: 'safe-storage', label: 'Armazenamento criptografado', pass: safeStorage.isEncryptionAvailable(), warn: !safeStorage.isEncryptionAvailable(), detail: safeStorage.isEncryptionAvailable() ? 'safeStorage disponível' : 'safeStorage indisponível; tokens não podem ser persistidos' },
+    { id: 'terminal-guardrail', label: 'Terminal com guardrails', pass: Array.isArray(SHELL_BLOCKLIST) && SHELL_BLOCKLIST.length >= 7, warn: true, detail: 'Terminal é uma superfície privilegiada; comandos são validados no processo principal' },
+  ];
+
+  return {
+    checks: checks.map((check) => ({
+      id: check.id,
+      label: check.label,
+      status: check.pass ? (check.warn ? 'warn' : 'pass') : 'fail',
+      detail: check.detail,
+    })),
+    scannedAt: new Date().toISOString(),
+  };
+});
+
 ipcMain.handle('learning:get-stats', () => learning.getLearningStats());
 ipcMain.handle('learning:get-entries', () => {
   const stats = learning.getLearningStats();
@@ -1880,9 +1954,14 @@ ipcMain.handle('shell:execute', async (_evt, cmd) => {
   if (!cmd || typeof cmd !== 'string' || cmd.trim().length === 0) {
     return { ok: false, code: 1, stdout: '', stderr: 'Comando vazio.' };
   }
+  try {
+    validateShellCommand(cmd);
+  } catch (error) {
+    return { ok: false, code: 403, stdout: '', stderr: `[GUARDRAIL] ${error.message}` };
+  }
   for (const pattern of SHELL_BLOCKLIST) {
     if (pattern.test(cmd)) {
-      return { ok: false, code: 403, stdout: '', stderr: `[GUARDRAIL] Comando bloqueado por política de segurança: "${cmd}"` };
+      return { ok: false, code: 403, stdout: '', stderr: '[GUARDRAIL] Comando bloqueado por política de segurança.' };
     }
   }
   return new Promise((resolve) => {

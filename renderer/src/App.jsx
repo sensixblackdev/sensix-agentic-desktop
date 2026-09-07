@@ -28,7 +28,14 @@ function AppContent() {
     { id: 'session_default', title: 'Sessão Principal', project: 'Geral', messages: [], todos: [] }
   ]);
   const [currentSessionId, setCurrentSessionId] = useState('session_default');
-  const [projects, setProjects] = useState([]);
+  const [projects, setProjects] = useState(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('sensix-projects-v1') || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedProject, setSelectedProject] = useState('all');
   const [activeTab, setActiveTab] = useState('chat');
   const [models, setModels] = useState([]);
@@ -43,6 +50,7 @@ function AppContent() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [pendingPrompt, setPendingPrompt] = useState(null);
   const [settingsData, setSettingsData] = useState({});
   const { addToast } = useToast();
 
@@ -88,10 +96,10 @@ function AppContent() {
 
   const currentSession = sessions.find((s) => s.id === currentSessionId) || sessions[0] || defaultSession;
 
-  const handleUpdateSession = (updatedOrUpdater) => {
+  const handleUpdateSession = (updatedOrUpdater, explicitSessionId = null) => {
     if (!updatedOrUpdater) return;
     setSessions((prev) => {
-      let targetId = currentSessionId;
+      let targetId = explicitSessionId || currentSessionId;
       let next;
       if (typeof updatedOrUpdater === 'function') {
         next = prev.map((s) => {
@@ -108,10 +116,12 @@ function AppContent() {
   };
 
   const handleNewSession = () => {
+    const selectedProjectData = projects.find((project) => project.name === selectedProject);
     const newSess = {
       id: 'session_' + Date.now(),
       title: 'Nova sessão',
       project: selectedProject === 'all' ? 'Geral' : selectedProject,
+      projectFolder: selectedProjectData?.folder || '.',
       messages: [],
       todos: []
     };
@@ -195,6 +205,8 @@ function AppContent() {
               actionMode={actionMode}
               onChangeActionMode={setActionMode}
               onUpdateSession={handleUpdateSession}
+              pendingPrompt={pendingPrompt}
+              onPromptConsumed={() => setPendingPrompt(null)}
             />
           )}
 
@@ -236,6 +248,14 @@ function AppContent() {
           setSettingsOpen(true);
           setPaletteOpen(false);
         }}
+        onTriggerPrompt={(prompt) => {
+          setActiveTab('chat');
+          setPendingPrompt(prompt);
+        }}
+        onOpenTemplates={() => {
+          setTemplatesOpen(true);
+          setPaletteOpen(false);
+        }}
       />
 
       <KeyboardShortcutsModal
@@ -247,8 +267,8 @@ function AppContent() {
         isOpen={templatesOpen}
         onClose={() => setTemplatesOpen(false)}
         onSelectTemplate={(prompt) => {
-          // Send to chat
           setActiveTab('chat');
+          setPendingPrompt(prompt);
         }}
       />
 
@@ -265,7 +285,11 @@ function AppContent() {
       <ProjectModal
         isOpen={projectModalOpen}
         onClose={() => setProjectModalOpen(false)}
-        onCreateProject={(proj) => setProjects((prev) => [...prev, proj])}
+        onCreateProject={(proj) => setProjects((prev) => {
+          const next = [...prev.filter((item) => item.name !== proj.name), proj];
+          localStorage.setItem('sensix-projects-v1', JSON.stringify(next));
+          return next;
+        })}
       />
 
       <ConfirmModal

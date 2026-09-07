@@ -10,8 +10,8 @@ Cliente Electron independente do AXION para executar o Qwen3-Coder publicado em 
 - Modelo ativo: `qwen3-coder-30b` via vLLM/OpenAI Chat Completions.
 - Loop ReAct com até 10 etapas e suporte nativo a `tool_calls`.
 - Ferramentas: listagem, leitura, pesquisa com ripgrep, escrita atômica, substituição em arquivos e PowerShell.
-- Workspace autorizado: `D:\WORKSPACE`.
-- Comandos destrutivos, acesso ao Vault, chaves SSH e leitura de variáveis de ambiente são bloqueados.
+- Workspaces autorizados: `D:\WORKSPACE` e `E:\axion`.
+- Comandos destrutivos, acesso bruto ao Vault, chaves SSH e leitura de variáveis de ambiente são bloqueados.
 - Eventos progressivos: `tool_start`, `tool_done`, `synthesizing`, `token` e `done`.
 
 ## Segurança
@@ -21,16 +21,13 @@ Cliente Electron independente do AXION para executar o Qwen3-Coder publicado em 
 - Todas as chamadas ao modelo e ferramentas saem do processo principal; o renderer usa somente IPC com `contextIsolation` e `sandbox` ativos.
 - Se o sistema não oferecer armazenamento criptografado, a aplicação recusa persistir a chave e informa o usuário.
 - Auditoria estruturada e sanitizada é gravada no diretório `userData` do Electron, com rotação em 5 MB.
-- O endpoint Vast atual usa HTTP e não exige bearer. Isso é adequado apenas enquanto ele estiver isolado para desenvolvimento; produção exige proxy HTTPS autenticado.
+- O endpoint padrão usa HTTPS. HTTP é aceito somente para runtimes locais em `localhost` ou `127.0.0.1`.
 
 ## Desenvolvimento
 
 Na pasta do projeto:
 
-```powershell
-npm install
-npm start
-```
+Use o pipeline remoto do GitHub Actions para instalar dependências, validar e empacotar. A execução local interativa deve ser iniciada somente por um operador humano quando necessária.
 
 A URL padrão aponta para a instância A100. O catálogo é lido de `/models`; o runtime envia definições OpenAI de tools para `/chat/completions`, executa as chamadas localmente e devolve cada resultado ao modelo até a síntese final.
 

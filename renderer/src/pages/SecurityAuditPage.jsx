@@ -1,21 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ShieldAlert, RefreshCw, CheckCircle2, AlertTriangle, Lock, Eye } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { MetricCard } from '../components/MetricCard';
 import { useToast } from '../context/ToastContext';
 
-const STATIC_CHECKS = [
-  { id: 'preload-context-isolation', label: 'Context Isolation ativa no Preload', status: 'pass', detail: 'contextBridge.exposeInMainWorld — sem acesso direto ao Node no renderer' },
-  { id: 'guardrail-shell', label: 'Guardrail de Shell no Terminal', status: 'pass', detail: 'SHELL_BLOCKLIST cobre rm -rf, shutdown, dd, curl vault, .env reads' },
-  { id: 'csp-renderer', label: 'CSP do Renderer (Vite build)', status: 'pass', detail: 'Renderer servido de renderer/dist/ com CSP do Electron' },
-  { id: 'vault-no-commit', label: 'Vault não commitado', status: 'pass', detail: '.gitignore cobre SECURE/VAULT, *.env, *.token' },
-  { id: 'nodeIntegration-off', label: 'nodeIntegration=false no Renderer', status: 'pass', detail: 'Configurado em main.cjs WebPreferences' },
-  { id: 'external-links', label: 'Links externos abrem no browser', status: 'pass', detail: "shell.openExternal() para URLs http:// e https://" },
-  { id: 'telemetry-local', label: 'Telemetria local (zero exfiltração)', status: 'pass', detail: 'Logs em E:\\axion\\logs\\sensix-desktop — sem envio externo' },
-  { id: 'learning-ledger-local', label: 'Learning Ledger local', status: 'pass', detail: 'Persistido em AppData — sem sync de rede' },
-];
-
 export function SecurityAuditPage() {
-  const [checks, setChecks] = useState(STATIC_CHECKS);
+  const [checks, setChecks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [scannedAt, setScannedAt] = useState(null);
   const { addToast } = useToast();
@@ -23,20 +12,16 @@ export function SecurityAuditPage() {
   const runAudit = async () => {
     setLoading(true);
     try {
-      // Run a real check: verify preload exists and is not exposing nodeIntegration
-      const res = await window.sensix?.executeCommand?.(
-        'Test-Path "D:\\WORKSPACE\\SANDBOX\\apps\\sensix-agentic-desktop\\preload.cjs"'
-      );
-      const preloadExists = res?.stdout?.trim() === 'True';
-
-      setChecks(STATIC_CHECKS.map(c => {
-        if (c.id === 'preload-context-isolation') {
-          return { ...c, status: preloadExists ? 'pass' : 'warn', detail: preloadExists ? c.detail : 'preload.cjs não encontrado!' };
-        }
-        return c;
-      }));
-      setScannedAt(new Date().toLocaleString());
-      addToast({ type: 'success', title: 'Auditoria concluída', message: `${STATIC_CHECKS.length} checks verificados.` });
+      const result = await window.sensix?.runSecurityAudit?.();
+      if (!Array.isArray(result?.checks)) throw new Error('O backend não retornou checks de segurança válidos.');
+      setChecks(result.checks);
+      setScannedAt(new Date(result.scannedAt).toLocaleString());
+      const failures = result.checks.filter((check) => check.status === 'fail').length;
+      addToast({
+        type: failures > 0 ? 'error' : 'success',
+        title: 'Auditoria concluída',
+        message: `${result.checks.length} checks reais verificados; ${failures} falha(s).`
+      });
     } catch (err) {
       addToast({ type: 'error', title: 'Erro na auditoria', message: err.message });
     } finally {

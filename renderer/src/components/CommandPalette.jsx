@@ -17,7 +17,8 @@ export function CommandPalette({
   onClose,
   onNavigate,
   onTriggerPrompt,
-  onOpenSettings
+  onOpenSettings,
+  onOpenTemplates
 }) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -42,6 +43,7 @@ export function CommandPalette({
     { id: 'nav-workspace', label: 'Diretrizes & Cache RAG', category: 'Navegação', icon: FolderKanban, action: () => onNavigate('workspace') },
     { id: 'action-help', label: 'Executar comando /help no console', category: 'Ações Rápidas', icon: HelpCircle, action: () => onTriggerPrompt?.('/help') },
     { id: 'action-status', label: 'Executar comando /status no console', category: 'Ações Rápidas', icon: Activity, action: () => onTriggerPrompt?.('/status') },
+    { id: 'action-templates', label: 'Abrir galeria de templates', category: 'Ações Rápidas', icon: Sparkles, action: onOpenTemplates },
     { id: 'action-settings', label: 'Abrir Configurações do Gateway', category: 'Configurações', icon: Cpu, action: onOpenSettings }
   ];
 

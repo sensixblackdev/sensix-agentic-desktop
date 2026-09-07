@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('sensix', {
   getLearningStats: () => ipcRenderer.invoke('learning:get-stats'),
   getLearningLedger: () => ipcRenderer.invoke('learning:get-entries'),
   clearLearningLedger: () => ipcRenderer.invoke('learning:clear'),
+  runSecurityAudit: () => ipcRenderer.invoke('security:audit'),
   executeCommand: (cmd) => ipcRenderer.invoke('shell:execute', cmd),
   executeShellCommand: (cmd) => ipcRenderer.invoke('shell:execute', cmd),
   previewFile: (filePath) => ipcRenderer.invoke('file:read-preview', filePath),

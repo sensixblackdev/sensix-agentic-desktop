@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Cpu, ShieldCheck, Zap, Compass, ChevronDown, Check, Sparkles, AlertCircle } from 'lucide-react';
+import { Cpu, ShieldCheck, Compass, ChevronDown, Check } from 'lucide-react';
 
 export function ChatHeader({
   models = [],
@@ -31,7 +31,7 @@ export function ChatHeader({
 
   const activeModelObj = models.find((m) => m.id === selectedModel) || {
     id: selectedModel || 'auto',
-    name: (selectedModel === 'auto' || !selectedModel) ? '✨ Auto (Primário · Anti-Refusal)' : selectedModel
+    name: (selectedModel === 'auto' || !selectedModel) ? 'Auto (Primário)' : selectedModel
   };
 
   const filteredModels = models.filter((m) =>
@@ -46,7 +46,7 @@ export function ChatHeader({
 
   const accessOptions = [
     { id: 'guarded', label: 'Guarded', desc: 'Bloqueio estrito de comandos destrutivos e Vault' },
-    { id: 'full-access', label: 'Full Access', desc: 'Execução estendida com confirmação ativa' }
+    { id: 'full-access', label: 'Acesso Estendido', desc: 'Escrita e terminal ativos; guardrails críticos permanecem obrigatórios' }
   ];
 
   return (
@@ -104,10 +104,10 @@ export function ChatHeader({
                       aria-selected={isSelected}
                     >
                       <div className="option-main-row">
-                        <span className="option-name">{m.id === 'auto' ? '✨ Auto (Anti-Refusal)' : (m.name || m.id)}</span>
+                        <span className="option-name">{m.id === 'auto' ? 'Auto (Roteamento resiliente)' : (m.name || m.id)}</span>
                         {m.id === 'auto' && (
                           <span className="badge badge-accent" style={{ fontSize: 9, padding: '1px 5px' }}>
-                            PRIMÁRIO · ANTI-REFUSAL
+                            PRIMÁRIO
                           </span>
                         )}
                         {isSelected && <Check size={13} className="text-accent check-icon" />}

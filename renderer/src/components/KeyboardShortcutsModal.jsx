@@ -12,7 +12,6 @@ export function KeyboardShortcutsModal({ isOpen, onClose }) {
     { key: '/help', desc: 'Exibir central de comandos no chat' },
     { key: '/status', desc: 'Ver diagnóstico em tempo real da sessão' },
     { key: '/clear', desc: 'Limpar histórico e tarefas da sessão' },
-    { key: '/compact', desc: 'Compactar mensagens para economizar tokens' },
     { key: '/rules', desc: 'Inspecionar diretrizes do workspace e RAG' }
   ];
 
