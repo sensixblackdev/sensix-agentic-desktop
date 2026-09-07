@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 
@@ -57,8 +58,13 @@ class TerminalService {
 
   createRecord(command, cwd, background) {
     const processId = `proc_${crypto.randomUUID()}`;
-    const runDir = path.join(this.spilloverRoot, processId);
-    fs.mkdirSync(runDir, { recursive: true });
+    let runDir = path.join(this.spilloverRoot, processId);
+    try {
+      fs.mkdirSync(runDir, { recursive: true });
+    } catch {
+      runDir = path.join(os.tmpdir(), 'sensix-terminal', processId);
+      fs.mkdirSync(runDir, { recursive: true });
+    }
     return {
       processId,
       command,
