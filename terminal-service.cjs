@@ -30,6 +30,11 @@ function resolvePowerShell() {
   throw new Error('PowerShell não encontrado. Instale PowerShell 7 (pwsh) ou configure SENSIX_POWERSHELL.');
 }
 
+function resolveWorkingDirectory(cwd) {
+  const requested = cwd ? path.resolve(cwd) : process.cwd();
+  return fs.existsSync(requested) ? requested : process.cwd();
+}
+
 function clampTimeout(value, fallback = DEFAULT_TIMEOUT_MS) {
   return Math.min(Math.max(Number(value) || fallback, 1000), MAX_TIMEOUT_MS);
 }
@@ -89,10 +94,11 @@ class TerminalService {
   async execute({ command, cwd, timeoutMs, background = false, env = {}, onStart = null }) {
     const normalized = String(command || '').trim();
     if (!normalized) throw new Error('Comando vazio.');
-    const record = this.createRecord(normalized, cwd, Boolean(background));
+    const workingDirectory = resolveWorkingDirectory(cwd);
+    const record = this.createRecord(normalized, workingDirectory, Boolean(background));
     this.processes.set(record.processId, record);
     const child = spawn(this.getShell(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', normalized], {
-      cwd,
+      cwd: workingDirectory,
       env: { ...process.env, ...env, SENSIX_AGENT_RUN: '1' },
       windowsHide: true,
       shell: false,
@@ -212,4 +218,4 @@ class TerminalService {
   }
 }
 
-module.exports = { TerminalService, clampTimeout, outputPreview, resolvePowerShell };
+module.exports = { TerminalService, clampTimeout, outputPreview, resolvePowerShell, resolveWorkingDirectory };

@@ -12,8 +12,13 @@ const { TerminalService } = require('./terminal-service.cjs');
 const DEFAULT_BASE_URL = process.env.SENSIX_API_BASE_URL || 'https://api.sensix.it.com/v1';
 const LEGACY_BASE_URL = 'http://174.78.228.101:40746/v1';
 const SENSIX_GATEWAY_HOSTS = ['api.sensix.it.com', 'sensix.it.com'];
-const WORKSPACE_ROOT = path.resolve(process.env.SENSIX_WORKSPACE_ROOT || 'D:\\WORKSPACE');
-const AXION_HEAVY_ROOT = path.resolve(process.env.AXION_HEAVY_ROOT || 'E:\\axion');
+function resolveRuntimeRoot(configuredPath, fallbackPath) {
+  const resolved = path.resolve(configuredPath);
+  return fs.existsSync(resolved) ? resolved : path.resolve(fallbackPath);
+}
+
+const WORKSPACE_ROOT = resolveRuntimeRoot(process.env.SENSIX_WORKSPACE_ROOT || 'D:\\WORKSPACE', process.cwd());
+const AXION_HEAVY_ROOT = resolveRuntimeRoot(process.env.AXION_HEAVY_ROOT || 'E:\\axion', process.env.TEMP || process.cwd());
 const MAX_TOOL_OUTPUT = 24 * 1024;
 const MAX_MODEL_TOOL_OUTPUT = 3 * 1024;
 const MAX_LIST_RESULTS = 60;

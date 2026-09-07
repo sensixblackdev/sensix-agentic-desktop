@@ -3,13 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { TerminalService, clampTimeout, outputPreview } = require('../terminal-service.cjs');
+const { TerminalService, clampTimeout, outputPreview, resolveWorkingDirectory } = require('../terminal-service.cjs');
 
 test('clampTimeout normaliza limites operacionais', () => {
   assert.equal(clampTimeout(undefined), 60_000);
   assert.equal(clampTimeout(10), 1_000);
   assert.equal(clampTimeout(999_999_999), 86_400_000);
   assert.equal(clampTimeout(12_345), 12_345);
+});
+
+test('resolveWorkingDirectory usa o processo quando o workspace configurado não existe', () => {
+  assert.equal(resolveWorkingDirectory(path.join(os.tmpdir(), 'sensix-workspace-ausente')), process.cwd());
 });
 
 test('outputPreview preserva saída pequena integralmente', () => {
