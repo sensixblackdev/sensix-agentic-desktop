@@ -52,7 +52,9 @@ export function TerminalPage() {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'ArrowUp') {
+    if (e.key === 'Enter') {
+      handleRun(e);
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       const next = Math.min(cmdIdx + 1, cmdHistory.length - 1);
       setCmdIdx(next);
