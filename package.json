@@ -2,6 +2,7 @@
   "name": "sensix-agentic-desktop",
   "version": "0.3.30",
   "description": "SENSIX Agentic Desktop — secure Electron runtime, isolated multi-session streaming, persistent projects and verified agent controls",
+  "author": "AXION Enterprise <axionenterprise777@gmail.com>",
   "main": "main.cjs",
   "private": true,
   "scripts": {
@@ -11,7 +12,7 @@
     "build": "npm run build:renderer",
     "dev:renderer": "vite --config renderer/vite.config.mjs",
     "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs && node --check runtime-core.cjs",
-    "test": "node --test tests/runtime-core.test.cjs",
+    "test": "node --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 --test tests/runtime-core.test.cjs",
     "test:e2e": "playwright test tests/electron-smoke.spec.cjs --workers=1"
   },
   "dependencies": {
