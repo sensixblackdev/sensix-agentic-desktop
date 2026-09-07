@@ -1,0 +1,209 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { spawn, spawnSync } = require('node:child_process');
+
+const DEFAULT_INLINE_LIMIT = 24 * 1024;
+const MAX_READ_CHUNK = 64 * 1024;
+const DEFAULT_TIMEOUT_MS = 60_000;
+const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+function resolvePowerShell() {
+  const candidates = [
+    process.env.SENSIX_POWERSHELL,
+    'pwsh.exe',
+    process.env.SystemRoot
+      ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : null,
+    'powershell.exe',
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const probe = spawnSync(candidate, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.ToString()'], {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    if (!probe.error && probe.status === 0) return candidate;
+  }
+  throw new Error('PowerShell não encontrado. Instale PowerShell 7 (pwsh) ou configure SENSIX_POWERSHELL.');
+}
+
+function clampTimeout(value, fallback = DEFAULT_TIMEOUT_MS) {
+  return Math.min(Math.max(Number(value) || fallback, 1000), MAX_TIMEOUT_MS);
+}
+
+function outputPreview(text, limit = DEFAULT_INLINE_LIMIT) {
+  const value = String(text || '');
+  if (Buffer.byteLength(value, 'utf8') <= limit) return value;
+  const headLimit = Math.floor(limit * 0.55);
+  const tailLimit = Math.floor(limit * 0.35);
+  const bytes = Buffer.from(value, 'utf8');
+  return `${bytes.subarray(0, headLimit).toString('utf8')}\n\n[... saída integral preservada em spillover ...]\n\n${bytes.subarray(Math.max(0, bytes.length - tailLimit)).toString('utf8')}`;
+}
+
+class TerminalService {
+  constructor({ spilloverRoot, redact = (value) => String(value ?? '') } = {}) {
+    this.spilloverRoot = spilloverRoot || path.join(process.env.TEMP || process.cwd(), 'sensix-terminal');
+    this.redact = redact;
+    this.shell = null;
+    this.processes = new Map();
+  }
+
+  getShell() {
+    if (!this.shell) this.shell = resolvePowerShell();
+    return this.shell;
+  }
+
+  createRecord(command, cwd, background) {
+    const processId = `proc_${crypto.randomUUID()}`;
+    const runDir = path.join(this.spilloverRoot, processId);
+    fs.mkdirSync(runDir, { recursive: true });
+    return {
+      processId,
+      command,
+      cwd,
+      background,
+      status: 'starting',
+      code: null,
+      signal: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      stdoutPath: path.join(runDir, 'stdout.log'),
+      stderrPath: path.join(runDir, 'stderr.log'),
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      child: null,
+      pid: null,
+      timer: null,
+      timedOut: false,
+    };
+  }
+
+  async execute({ command, cwd, timeoutMs, background = false, env = {}, onStart = null }) {
+    const normalized = String(command || '').trim();
+    if (!normalized) throw new Error('Comando vazio.');
+    const record = this.createRecord(normalized, cwd, Boolean(background));
+    this.processes.set(record.processId, record);
+    const child = spawn(this.getShell(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', normalized], {
+      cwd,
+      env: { ...process.env, ...env, SENSIX_AGENT_RUN: '1' },
+      windowsHide: true,
+      shell: false,
+    });
+    record.child = child;
+    record.pid = child.pid || null;
+    record.status = 'running';
+    if (typeof onStart === 'function') onStart({ processId: record.processId, pid: record.pid });
+
+    const stdoutStream = fs.createWriteStream(record.stdoutPath, { flags: 'a', mode: 0o600 });
+    const stderrStream = fs.createWriteStream(record.stderrPath, { flags: 'a', mode: 0o600 });
+    child.stdout?.on('data', (chunk) => { record.stdoutBytes += chunk.length; stdoutStream.write(chunk); });
+    child.stderr?.on('data', (chunk) => { record.stderrBytes += chunk.length; stderrStream.write(chunk); });
+
+    const completion = new Promise((resolve, reject) => {
+      const finish = (code, signal) => {
+        if (record.timer) clearTimeout(record.timer);
+        record.code = Number.isInteger(code) ? code : -1;
+        record.signal = signal || null;
+        record.status = record.timedOut ? 'timed_out' : (record.code === 0 ? 'completed' : 'failed');
+        record.completedAt = new Date().toISOString();
+        record.child = null;
+        Promise.all([
+          new Promise((done) => stdoutStream.end(done)),
+          new Promise((done) => stderrStream.end(done)),
+        ]).then(() => resolve(this.snapshot(record)));
+      };
+      child.once('error', (error) => {
+        if (record.timer) clearTimeout(record.timer);
+        stdoutStream.end();
+        stderrStream.end();
+        record.status = 'failed';
+        record.completedAt = new Date().toISOString();
+        record.child = null;
+        reject(error);
+      });
+      child.once('close', finish);
+    });
+    record.completion = completion;
+    record.timer = setTimeout(() => {
+      record.timedOut = true;
+      this.stop(record.processId).catch(() => {});
+    }, clampTimeout(timeoutMs, background ? MAX_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
+
+    if (background) return this.snapshot(record);
+    return completion;
+  }
+
+  snapshot(record, { stdoutOffset = 0, stderrOffset = 0 } = {}) {
+    const stdout = this.readFrom(record.stdoutPath, stdoutOffset);
+    const stderr = this.readFrom(record.stderrPath, stderrOffset);
+    return {
+      ok: record.status === 'running' || record.status === 'completed',
+      processId: record.processId,
+      pid: record.pid,
+      status: record.status,
+      code: record.code,
+      signal: record.signal,
+      timedOut: record.timedOut,
+      background: record.background,
+      cwd: record.cwd,
+      startedAt: record.startedAt,
+      completedAt: record.completedAt,
+      stdout: outputPreview(this.redact(stdout.content)),
+      stderr: outputPreview(this.redact(stderr.content)),
+      stdoutOffset: stdout.nextOffset,
+      stderrOffset: stderr.nextOffset,
+      stdoutBytes: record.stdoutBytes,
+      stderrBytes: record.stderrBytes,
+      artifacts: {
+        stdout: record.stdoutPath,
+        stderr: record.stderrPath,
+      },
+    };
+  }
+
+  readFrom(filePath, offset = 0) {
+    if (!fs.existsSync(filePath)) return { content: '', nextOffset: Number(offset) || 0 };
+    const size = fs.statSync(filePath).size;
+    const start = Math.min(Math.max(Number(offset) || 0, 0), size);
+    if (start === size) return { content: '', nextOffset: size };
+    const length = Math.min(size - start, MAX_READ_CHUNK);
+    const buffer = Buffer.alloc(length);
+    const fd = fs.openSync(filePath, 'r');
+    try { fs.readSync(fd, buffer, 0, length, start); } finally { fs.closeSync(fd); }
+    return { content: buffer.toString('utf8'), nextOffset: start + length };
+  }
+
+  status(processId, offsets = {}) {
+    const record = this.processes.get(String(processId || ''));
+    if (!record) throw new Error('Processo não encontrado nesta sessão do SENSIX.');
+    return this.snapshot(record, offsets);
+  }
+
+  async stop(processId) {
+    const record = this.processes.get(String(processId || ''));
+    if (!record) return { ok: false, processId, status: 'not_found' };
+    const pid = record.child?.pid;
+    if (!pid) return this.snapshot(record);
+    if (process.platform === 'win32') {
+      spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, timeout: 10_000 });
+    } else {
+      try { process.kill(-pid, 'SIGTERM'); } catch { try { record.child.kill('SIGTERM'); } catch {} }
+    }
+    if (record.completion) {
+      const completed = await Promise.race([
+        record.completion,
+        new Promise((resolve) => setTimeout(() => resolve(this.snapshot(record)), 5000)),
+      ]);
+      return { ...completed, stopRequested: true };
+    }
+    return { ...this.snapshot(record), stopRequested: true };
+  }
+
+  async stopAll() {
+    await Promise.all([...this.processes.keys()].map((processId) => this.stop(processId).catch(() => null)));
+  }
+}
+
+module.exports = { TerminalService, clampTimeout, outputPreview, resolvePowerShell };

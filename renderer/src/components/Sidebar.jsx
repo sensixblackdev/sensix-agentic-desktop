@@ -208,7 +208,7 @@ export function Sidebar({
             onClick={() => onSelectTab('terminal')}
           >
             <Terminal size={14} />
-            <span>Terminal Seguro</span>
+            <span>Terminal Agentic</span>
           </button>
           <button
             type="button"

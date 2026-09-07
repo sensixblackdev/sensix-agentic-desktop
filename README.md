@@ -8,10 +8,11 @@ Cliente Electron independente do AXION para executar o Qwen3-Coder publicado em 
 
 - Endpoint padrão: `http://174.78.228.101:40746/v1`.
 - Modelo ativo: `qwen3-coder-30b` via vLLM/OpenAI Chat Completions.
-- Loop ReAct com até 10 etapas e suporte nativo a `tool_calls`.
+- Loop ReAct com até 30 etapas e suporte nativo a `tool_calls` paralelas.
+- Terminal PowerShell unificado com execução foreground/background, polling incremental, encerramento da árvore e spillover integral em `E:\axion\temp\sensix-terminal`.
 - Ferramentas: listagem, leitura, pesquisa com ripgrep, escrita atômica, substituição em arquivos e PowerShell.
 - Workspaces autorizados: `D:\WORKSPACE` e `E:\axion`.
-- Comandos destrutivos, acesso bruto ao Vault, chaves SSH e leitura de variáveis de ambiente são bloqueados.
+- Terminal privado com acesso total; segredos são redigidos das respostas e da telemetria textual.
 - Eventos progressivos: `tool_start`, `tool_done`, `synthesizing`, `token` e `done`.
 
 ## Segurança

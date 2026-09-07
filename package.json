@@ -11,8 +11,8 @@
     "build:renderer": "vite build --config renderer/vite.config.mjs",
     "build": "npm run build:renderer",
     "dev:renderer": "vite --config renderer/vite.config.mjs",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs && node --check runtime-core.cjs",
-    "test": "node --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 --test tests/runtime-core.test.cjs",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check telemetry.cjs && node --check directives-rag.cjs && node --check learning-ledger.cjs && node --check runtime-core.cjs && node --check terminal-service.cjs",
+    "test": "node --test tests/*.test.cjs && node --experimental-test-coverage --test-coverage-include=runtime-core.cjs --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 --test tests/runtime-core.test.cjs",
     "test:e2e": "playwright test tests/electron-smoke.spec.cjs --workers=1"
   },
   "dependencies": {
@@ -38,6 +38,7 @@
       "directives-rag.cjs",
       "learning-ledger.cjs",
       "runtime-core.cjs",
+      "terminal-service.cjs",
       "renderer/**/*",
       "README.md"
     ],

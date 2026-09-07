@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Play, Trash2, Copy, Check, ShieldAlert } from 'lucide-react';
+import { Terminal, Play, Trash2, Copy, Check, Zap } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
 const HISTORY_LIMIT = 100;
@@ -35,17 +35,11 @@ export function TerminalPage() {
     try {
       const res = await window.sensix?.executeCommand?.(cmdToRun);
       const elapsed = Date.now() - startTs;
-      if (res?.code === 403) {
-        setHistory((prev) => [...prev.slice(-HISTORY_LIMIT + 1), {
-          cmd: cmdToRun, output: res.stderr, code: 403, ts: startTs, elapsed
-        }]);
-        addToast({ type: 'warning', title: 'Guardrail', message: 'Comando bloqueado por política de segurança.' });
-      } else {
-        const output = res?.stdout || res?.stderr || (res?.code === 0 ? '[Comando executado sem saída]' : '[Erro]');
-        setHistory((prev) => [...prev.slice(-HISTORY_LIMIT + 1), {
-          cmd: cmdToRun, output: output.trimEnd(), code: res?.code ?? 0, ts: startTs, elapsed
-        }]);
-      }
+      const output = res?.stdout || res?.stderr || (res?.code === 0 ? '[Comando executado sem saída]' : '[Erro]');
+      setHistory((prev) => [...prev.slice(-HISTORY_LIMIT + 1), {
+        cmd: cmdToRun, output: output.trimEnd(), code: res?.code ?? 0, ts: startTs, elapsed,
+        artifacts: res?.artifacts
+      }]);
     } catch (err) {
       setHistory((prev) => [...prev.slice(-HISTORY_LIMIT + 1), {
         cmd: cmdToRun, output: `IPC Error: ${err.message}`, code: 1, ts: startTs
@@ -84,8 +78,8 @@ export function TerminalPage() {
         <div className="page-title-group">
           <Terminal size={18} className="text-accent" />
           <h2>Terminal Integrado PowerShell</h2>
-          <span className="badge badge-warning" title="Guardrail ativo — comandos destrutivos são bloqueados">
-            <ShieldAlert size={11} /> Guardrail Ativo
+          <span className="badge badge-warning" title="Terminal PowerShell real com acesso integral">
+            <Zap size={11} /> Acesso Total
           </span>
         </div>
         <div className="page-header-actions">
@@ -130,10 +124,10 @@ export function TerminalPage() {
               </div>
               <pre style={{
                 margin: 0, padding: '8px 10px',
-                background: item.code === 403 ? 'rgba(245,158,11,0.08)' : item.code !== 0 ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)',
-                borderLeft: `2px solid ${item.code === 403 ? '#f59e0b' : item.code !== 0 ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
+                background: item.code !== 0 ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)',
+                borderLeft: `2px solid ${item.code !== 0 ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
                 borderRadius: '0 4px 4px 0',
-                color: item.code === 403 ? '#fbbf24' : item.code !== 0 ? '#f87171' : '#94a3b8',
+                color: item.code !== 0 ? '#f87171' : '#94a3b8',
                 fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all'
               }}>
                 {item.output || '(sem saída)'}
