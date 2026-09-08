@@ -54,6 +54,7 @@ class TerminalService {
     this.redact = redact;
     this.shell = null;
     this.processes = new Map();
+    this.sessions = new Map();
   }
 
   getShell() {
@@ -214,7 +215,57 @@ class TerminalService {
   }
 
   async stopAll() {
+    for (const sessionId of [...this.sessions.keys()]) this.stopSession(sessionId);
     await Promise.all([...this.processes.keys()].map((processId) => this.stop(processId).catch(() => null)));
+  }
+
+  startSession({ cwd, cols = 120, rows = 30, env = {}, onData = null, onExit = null } = {}) {
+    const pty = require('node-pty');
+    const sessionId = `term_${crypto.randomUUID()}`;
+    const workingDirectory = resolveWorkingDirectory(cwd);
+    const terminal = pty.spawn(this.getShell(), ['-NoLogo', '-NoProfile'], {
+      name: 'xterm-256color',
+      cols: Math.min(Math.max(Number(cols) || 120, 20), 400),
+      rows: Math.min(Math.max(Number(rows) || 30, 5), 200),
+      cwd: workingDirectory,
+      env: { ...process.env, ...env, SENSIX_AGENT_RUN: '1', TERM: 'xterm-256color' },
+      useConpty: process.platform === 'win32',
+    });
+    const record = { sessionId, terminal, pid: terminal.pid, cwd: workingDirectory, status: 'running', startedAt: new Date().toISOString() };
+    this.sessions.set(sessionId, record);
+    terminal.onData((data) => {
+      if (typeof onData === 'function') onData({ sessionId, type: 'data', data: this.redact(data) });
+    });
+    terminal.onExit(({ exitCode, signal }) => {
+      record.status = 'exited';
+      record.exitCode = exitCode;
+      record.signal = signal;
+      record.completedAt = new Date().toISOString();
+      if (typeof onExit === 'function') onExit({ sessionId, type: 'exit', exitCode, signal });
+      this.sessions.delete(sessionId);
+    });
+    return { sessionId, pid: terminal.pid, cwd: workingDirectory, status: record.status };
+  }
+
+  writeSession(sessionId, data) {
+    const record = this.sessions.get(String(sessionId || ''));
+    if (!record) throw new Error('Sessão de terminal não encontrada.');
+    record.terminal.write(String(data ?? ''));
+    return { ok: true, sessionId: record.sessionId, status: record.status };
+  }
+
+  resizeSession(sessionId, cols, rows) {
+    const record = this.sessions.get(String(sessionId || ''));
+    if (!record) return { ok: false, sessionId, status: 'not_found' };
+    record.terminal.resize(Math.min(Math.max(Number(cols) || 120, 20), 400), Math.min(Math.max(Number(rows) || 30, 5), 200));
+    return { ok: true, sessionId: record.sessionId, status: record.status };
+  }
+
+  stopSession(sessionId) {
+    const record = this.sessions.get(String(sessionId || ''));
+    if (!record) return { ok: false, sessionId, status: 'not_found' };
+    record.terminal.kill();
+    return { ok: true, sessionId: record.sessionId, status: 'stopping' };
   }
 }
 

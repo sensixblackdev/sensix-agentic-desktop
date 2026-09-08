@@ -64,3 +64,25 @@ test('TerminalService inicia, consulta e encerra processo background', async (t)
   const stopped = await service.stop(started.processId);
   assert.equal(stopped.stopRequested, true);
 });
+
+test('TerminalService mantém sessão PTY e estado entre comandos', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sensix-terminal-pty-'));
+  const service = new TerminalService({ spilloverRoot: root });
+  const chunks = [];
+  const session = service.startSession({ cwd: root, onData: ({ data }) => chunks.push(data) });
+  t.after(() => {
+    service.stopSession(session.sessionId);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  service.writeSession(session.sessionId, "$sensixPtyState = 'persistent-ok'\r");
+  service.writeSession(session.sessionId, 'Write-Output $sensixPtyState\r');
+  const deadline = Date.now() + 10_000;
+  while (!chunks.join('').includes('persistent-ok') && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  assert.match(chunks.join(''), /persistent-ok/);
+  assert.equal(service.resizeSession(session.sessionId, 100, 24).ok, true);
+  assert.equal(service.writeSession(session.sessionId, '').ok, true);
+});

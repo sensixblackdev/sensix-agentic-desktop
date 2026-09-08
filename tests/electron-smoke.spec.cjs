@@ -27,9 +27,12 @@ test('UI Electron inicia e expõe fluxos essenciais', async () => {
     await expect(page.getByText('FAIL')).toHaveCount(0);
 
     await page.getByRole('button', { name: /Terminal Agentic/ }).click();
-    await expect(page.getByRole('heading', { name: 'Terminal Integrado PowerShell' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Terminal Agentic ConPTY' })).toBeVisible();
     const terminalInput = page.getByPlaceholder(/Digite um comando PowerShell/);
-    await terminalInput.fill("Write-Output 'sensix-electron-terminal-ok'");
+    await expect(terminalInput).toBeEnabled({ timeout: 20_000 });
+    await terminalInput.fill("$sensixE2E = 'sensix-electron-terminal-ok'");
+    await terminalInput.press('Enter');
+    await terminalInput.fill('Write-Output $sensixE2E');
     await terminalInput.press('Enter');
     await expect(page.locator('.terminal-entry').last().locator('pre')).toContainText('sensix-electron-terminal-ok', { timeout: 20_000 });
   } finally {

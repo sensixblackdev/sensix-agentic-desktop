@@ -3572,10 +3572,47 @@ select option:checked, select option:hover {
 }
 
 .terminal-entry {
+  position: relative;
   display: flex;
   flex-direction: column;
   margin-bottom: 12px;
 }
+
+.terminal-stream-output {
+  margin: 0;
+  min-height: 100%;
+  color: #cbd5e1;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.terminal-copy-button {
+  position: sticky;
+  top: 0;
+  align-self: flex-end;
+  z-index: 2;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  padding: 5px;
+  cursor: pointer;
+}
+
+.terminal-session-state,
+.terminal-prompt-symbol {
+  color: rgba(255, 255, 255, 0.45);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.terminal-session-state.running { color: var(--accent); }
+.terminal-session-state.failed,
+.terminal-session-state.exited { color: var(--danger); }
 
 .spinner-inline {
   display: inline-block;

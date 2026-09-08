@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld('sensix', {
   startProcess: (payload) => ipcRenderer.invoke('process:start', payload),
   getProcessStatus: (payload) => ipcRenderer.invoke('process:status', payload),
   stopProcess: (processId) => ipcRenderer.invoke('process:stop', processId),
+  createTerminalSession: (payload) => ipcRenderer.invoke('terminal:create', payload),
+  writeTerminalSession: (payload) => ipcRenderer.invoke('terminal:write', payload),
+  resizeTerminalSession: (payload) => ipcRenderer.invoke('terminal:resize', payload),
+  stopTerminalSession: (sessionId) => ipcRenderer.invoke('terminal:stop', sessionId),
+  onTerminalEvent: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on('terminal:event', handler);
+    return () => ipcRenderer.removeListener('terminal:event', handler);
+  },
   previewFile: (filePath) => ipcRenderer.invoke('file:read-preview', filePath),
   writeFile: (filePath, content) => ipcRenderer.invoke('file:write', { filePath, content }),
   saveFile: (filePath, content) => ipcRenderer.invoke('file:write', { filePath, content }),

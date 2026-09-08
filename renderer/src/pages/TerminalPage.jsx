@@ -1,77 +1,126 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Play, Trash2, Copy, Check, Zap } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, Copy, Play, RotateCcw, Square, Terminal, Trash2, Zap } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
-const HISTORY_LIMIT = 100;
+const OUTPUT_LIMIT = 1024 * 1024;
+
+function cleanTerminalOutput(value) {
+  return String(value || '')
+    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '')
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\r(?!\n)/g, '');
+}
 
 export function TerminalPage() {
   const [command, setCommand] = useState('');
-  const [history, setHistory] = useState([
-    { cmd: 'Get-Location', output: 'D:\\WORKSPACE\\SANDBOX\\apps\\sensix-agentic-desktop', code: 0, ts: Date.now() }
-  ]);
-  const [isExecuting, setIsExecuting] = useState(false);
+  const [output, setOutput] = useState('');
+  const [sessionState, setSessionState] = useState('starting');
+  const [sessionMeta, setSessionMeta] = useState(null);
   const [cmdHistory, setCmdHistory] = useState([]);
   const [cmdIdx, setCmdIdx] = useState(-1);
-  const [copied, setCopied] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const sessionRef = useRef(null);
   const outputRef = useRef(null);
   const inputRef = useRef(null);
   const { addToast } = useToast();
 
   useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [history]);
+    let disposed = false;
+    const removeListener = window.sensix?.onTerminalEvent?.((event) => {
+      if (sessionRef.current && event.sessionId !== sessionRef.current) return;
+      if (event.type === 'data') {
+        const chunk = cleanTerminalOutput(event.data);
+        setOutput((current) => `${current}${chunk}`.slice(-OUTPUT_LIMIT));
+      } else if (event.type === 'exit') {
+        setSessionState('exited');
+      }
+    });
 
-  const handleRun = async (e) => {
-    e?.preventDefault();
-    if (!command.trim() || isExecuting) return;
-    const cmdToRun = command.trim();
-    setCmdHistory((prev) => [cmdToRun, ...prev.slice(0, 49)]);
+    window.sensix?.createTerminalSession?.({ cols: 120, rows: 30 }).then((session) => {
+      if (disposed) {
+        window.sensix?.stopTerminalSession?.(session.sessionId);
+        return;
+      }
+      sessionRef.current = session.sessionId;
+      setSessionMeta(session);
+      setSessionState('running');
+      inputRef.current?.focus();
+    }).catch((error) => {
+      setSessionState('failed');
+      setOutput((current) => `${current}\nFalha ao iniciar ConPTY: ${error.message}\n`);
+      addToast({ type: 'error', title: 'Terminal indisponível', message: error.message });
+    });
+
+    return () => {
+      disposed = true;
+      removeListener?.();
+      if (sessionRef.current) window.sensix?.stopTerminalSession?.(sessionRef.current);
+      sessionRef.current = null;
+    };
+  }, [addToast]);
+
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [output]);
+
+  const write = async (data) => {
+    if (!sessionRef.current || sessionState !== 'running') return;
+    await window.sensix?.writeTerminalSession?.({ sessionId: sessionRef.current, data });
+  };
+
+  const handleRun = async (event) => {
+    event?.preventDefault();
+    if (!command.trim() || sessionState !== 'running') return;
+    const cmdToRun = command;
+    setCmdHistory((previous) => [cmdToRun, ...previous.filter((item) => item !== cmdToRun).slice(0, 49)]);
     setCmdIdx(-1);
-    setIsExecuting(true);
     setCommand('');
-    const startTs = Date.now();
     try {
-      const res = await window.sensix?.executeCommand?.(cmdToRun);
-      const elapsed = Date.now() - startTs;
-      const output = res?.stdout || res?.stderr || (res?.code === 0 ? '[Comando executado sem saída]' : '[Erro]');
-      setHistory((prev) => [...prev.slice(-HISTORY_LIMIT + 1), {
-        cmd: cmdToRun, output: output.trimEnd(), code: res?.code ?? 0, ts: startTs, elapsed,
-        artifacts: res?.artifacts
-      }]);
-    } catch (err) {
-      setHistory((prev) => [...prev.slice(-HISTORY_LIMIT + 1), {
-        cmd: cmdToRun, output: `IPC Error: ${err.message}`, code: 1, ts: startTs
-      }]);
-      addToast({ type: 'error', title: 'Falha na execução', message: err.message });
-    } finally {
-      setIsExecuting(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      await write(`${cmdToRun}\r`);
+    } catch (error) {
+      addToast({ type: 'error', title: 'Falha ao enviar comando', message: error.message });
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleRun(e);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      handleRun(event);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
       const next = Math.min(cmdIdx + 1, cmdHistory.length - 1);
       setCmdIdx(next);
       setCommand(cmdHistory[next] || '');
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
       const next = Math.max(cmdIdx - 1, -1);
       setCmdIdx(next);
       setCommand(next === -1 ? '' : cmdHistory[next]);
+    } else if (event.key.toLowerCase() === 'c' && event.ctrlKey) {
+      event.preventDefault();
+      write('\x03');
     }
   };
 
-  const copyOutput = (text, idx) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(idx);
-      setTimeout(() => setCopied(null), 1500);
-    });
+  const restart = async () => {
+    if (sessionRef.current) await window.sensix?.stopTerminalSession?.(sessionRef.current);
+    sessionRef.current = null;
+    setOutput('');
+    setSessionState('starting');
+    try {
+      const session = await window.sensix?.createTerminalSession?.({ cols: 120, rows: 30 });
+      sessionRef.current = session.sessionId;
+      setSessionMeta(session);
+      setSessionState('running');
+    } catch (error) {
+      setSessionState('failed');
+      addToast({ type: 'error', title: 'Falha ao reiniciar', message: error.message });
+    }
+  };
+
+  const copyOutput = async () => {
+    await navigator.clipboard.writeText(output);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -79,95 +128,32 @@ export function TerminalPage() {
       <header className="page-header-bar">
         <div className="page-title-group">
           <Terminal size={18} className="text-accent" />
-          <h2>Terminal Integrado PowerShell</h2>
-          <span className="badge badge-warning" title="Terminal PowerShell real com acesso integral">
-            <Zap size={11} /> Acesso Total
-          </span>
+          <h2>Terminal Agentic ConPTY</h2>
+          <span className="badge badge-warning" title="Sessão PowerShell persistente com stdin e acesso integral"><Zap size={11} /> Acesso Total</span>
         </div>
         <div className="page-header-actions">
-          <button type="button" className="btn-secondary" onClick={() => setHistory([])}>
-            <Trash2 size={14} />
-            <span>Limpar</span>
-          </button>
+          <button type="button" className="btn-secondary" onClick={() => write('\x03')} disabled={sessionState !== 'running'} title="Interromper processo atual"><Square size={13} /><span>Ctrl+C</span></button>
+          <button type="button" className="btn-secondary" onClick={restart}><RotateCcw size={13} /><span>Reiniciar</span></button>
+          <button type="button" className="btn-secondary" onClick={() => setOutput('')}><Trash2 size={14} /><span>Limpar</span></button>
         </div>
       </header>
 
       <div className="terminal-window" style={{ margin: '0 16px 16px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
         <div className="terminal-header">
-          <div className="terminal-dots">
-            <span className="terminal-dot red" />
-            <span className="terminal-dot yellow" />
-            <span className="terminal-dot green" />
-          </div>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-mono)' }}>
-            PowerShell 7 — sensix-agentic-desktop
-          </span>
+          <div className="terminal-dots"><span className="terminal-dot red" /><span className="terminal-dot yellow" /><span className="terminal-dot green" /></div>
+          <span className={`terminal-session-state ${sessionState}`}>{sessionState} {sessionMeta?.pid ? `• PID ${sessionMeta.pid}` : ''}</span>
         </div>
-
         <div className="terminal-output" ref={outputRef} style={{ flex: 1 }}>
-          {history.map((item, idx) => (
-            <div key={idx} className="terminal-entry" style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ color: '#38bdf8', fontFamily: 'var(--font-mono)', fontSize: 12 }}>PS&gt;</span>
-                <span style={{ color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: 12, flex: 1 }}>{item.cmd}</span>
-                <button
-                  type="button"
-                  onClick={() => copyOutput(item.output, idx)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', padding: '2px 4px' }}
-                  title="Copiar saída"
-                >
-                  {copied === idx ? <Check size={11} style={{ color: '#10b981' }} /> : <Copy size={11} />}
-                </button>
-                {item.elapsed && (
-                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'var(--font-mono)' }}>
-                    {item.elapsed}ms
-                  </span>
-                )}
-              </div>
-              <pre style={{
-                margin: 0, padding: '8px 10px',
-                background: item.code !== 0 ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)',
-                borderLeft: `2px solid ${item.code !== 0 ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
-                borderRadius: '0 4px 4px 0',
-                color: item.code !== 0 ? '#f87171' : '#94a3b8',
-                fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all'
-              }}>
-                {item.output || '(sem saída)'}
-              </pre>
-            </div>
-          ))}
-          {isExecuting && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#38bdf8', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-              <span className="spinner-inline" />
-              <span>Executando...</span>
-            </div>
-          )}
+          <div className="terminal-entry">
+            <button type="button" className="terminal-copy-button" onClick={copyOutput} title="Copiar saída">{copied ? <Check size={12} /> : <Copy size={12} />}</button>
+            <pre className="terminal-stream-output">{output || (sessionState === 'starting' ? 'Iniciando sessão ConPTY…' : '')}</pre>
+          </div>
         </div>
-
-        <div className="terminal-prompt-line">
-          <span style={{ color: '#38bdf8', fontFamily: 'var(--font-mono)', fontSize: 12, flexShrink: 0 }}>PS&gt;</span>
-          <input
-            ref={inputRef}
-            type="text"
-            className="terminal-input"
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Digite um comando PowerShell... (↑↓ para histórico)"
-            disabled={isExecuting}
-            autoFocus
-          />
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleRun}
-            disabled={isExecuting || !command.trim()}
-            style={{ padding: '6px 12px', fontSize: 12, flexShrink: 0 }}
-          >
-            <Play size={12} />
-            <span>Run</span>
-          </button>
-        </div>
+        <form className="terminal-prompt-line" onSubmit={handleRun}>
+          <span className="terminal-prompt-symbol">PS&gt;</span>
+          <input ref={inputRef} type="text" className="terminal-input" value={command} onChange={(event) => setCommand(event.target.value)} onKeyDown={handleKeyDown} placeholder="Digite um comando PowerShell... (↑↓ histórico, Ctrl+C interrompe)" disabled={sessionState !== 'running'} autoFocus />
+          <button type="submit" className="btn-primary" disabled={sessionState !== 'running' || !command.trim()} style={{ padding: '6px 12px', fontSize: 12, flexShrink: 0 }}><Play size={12} /><span>Executar</span></button>
+        </form>
       </div>
     </div>
   );

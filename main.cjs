@@ -1888,6 +1888,16 @@ ipcMain.handle('process:start', (_evt, payload) => terminalService.execute({
 }));
 ipcMain.handle('process:status', (_evt, payload) => terminalService.status(payload?.processId, payload || {}));
 ipcMain.handle('process:stop', (_evt, processId) => terminalService.stop(processId));
+ipcMain.handle('terminal:create', (evt, payload) => terminalService.startSession({
+  cwd: payload?.cwd || WORKSPACE_ROOT,
+  cols: payload?.cols,
+  rows: payload?.rows,
+  onData: (event) => { if (!evt.sender.isDestroyed()) evt.sender.send('terminal:event', event); },
+  onExit: (event) => { if (!evt.sender.isDestroyed()) evt.sender.send('terminal:event', event); },
+}));
+ipcMain.handle('terminal:write', (_evt, payload) => terminalService.writeSession(payload?.sessionId, payload?.data));
+ipcMain.handle('terminal:resize', (_evt, payload) => terminalService.resizeSession(payload?.sessionId, payload?.cols, payload?.rows));
+ipcMain.handle('terminal:stop', (_evt, sessionId) => terminalService.stopSession(sessionId));
 
 ipcMain.handle('window:close', () => mainWindow?.close());
 

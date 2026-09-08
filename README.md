@@ -10,6 +10,7 @@ Cliente Electron independente do AXION para executar o Qwen3-Coder publicado em 
 - Modelo ativo: `qwen3-coder-30b` via vLLM/OpenAI Chat Completions.
 - Loop ReAct com até 30 etapas e suporte nativo a `tool_calls` paralelas.
 - Terminal PowerShell unificado com execução foreground/background, polling incremental, encerramento da árvore e spillover integral em `E:\axion\temp\sensix-terminal`.
+- Sessão interativa ConPTY persistente na UI, com stdin, Ctrl+C, histórico e streaming contínuo de saída.
 - Ferramentas: listagem, leitura, pesquisa com ripgrep, escrita atômica, substituição em arquivos e PowerShell.
 - Workspaces autorizados: `D:\WORKSPACE` e `E:\axion`.
 - Terminal privado com acesso total; segredos são redigidos das respostas e da telemetria textual.
