@@ -70,8 +70,8 @@ test('TerminalService mantém sessão PTY e estado entre comandos', async (t) =>
   const service = new TerminalService({ spilloverRoot: root });
   const chunks = [];
   const session = service.startSession({ cwd: root, onData: ({ data }) => chunks.push(data) });
-  t.after(() => {
-    service.stopSession(session.sessionId);
+  t.after(async () => {
+    await service.stopSession(session.sessionId);
     fs.rmSync(root, { recursive: true, force: true });
   });
 

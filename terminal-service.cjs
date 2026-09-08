@@ -215,8 +215,10 @@ class TerminalService {
   }
 
   async stopAll() {
-    for (const sessionId of [...this.sessions.keys()]) this.stopSession(sessionId);
-    await Promise.all([...this.processes.keys()].map((processId) => this.stop(processId).catch(() => null)));
+    await Promise.all([
+      ...[...this.sessions.keys()].map((sessionId) => this.stopSession(sessionId).catch(() => null)),
+      ...[...this.processes.keys()].map((processId) => this.stop(processId).catch(() => null)),
+    ]);
   }
 
   startSession({ cwd, cols = 120, rows = 30, env = {}, onData = null, onExit = null } = {}) {
@@ -231,7 +233,9 @@ class TerminalService {
       env: { ...process.env, ...env, SENSIX_AGENT_RUN: '1', TERM: 'xterm-256color' },
       useConpty: process.platform === 'win32',
     });
-    const record = { sessionId, terminal, pid: terminal.pid, cwd: workingDirectory, status: 'running', startedAt: new Date().toISOString() };
+    let resolveExit;
+    const exitPromise = new Promise((resolve) => { resolveExit = resolve; });
+    const record = { sessionId, terminal, pid: terminal.pid, cwd: workingDirectory, status: 'running', startedAt: new Date().toISOString(), exitPromise };
     this.sessions.set(sessionId, record);
     terminal.onData((data) => {
       if (typeof onData === 'function') onData({ sessionId, type: 'data', data: this.redact(data) });
@@ -241,6 +245,7 @@ class TerminalService {
       record.exitCode = exitCode;
       record.signal = signal;
       record.completedAt = new Date().toISOString();
+      resolveExit({ exitCode, signal });
       if (typeof onExit === 'function') onExit({ sessionId, type: 'exit', exitCode, signal });
       this.sessions.delete(sessionId);
     });
@@ -261,11 +266,27 @@ class TerminalService {
     return { ok: true, sessionId: record.sessionId, status: record.status };
   }
 
-  stopSession(sessionId) {
+  async stopSession(sessionId) {
     const record = this.sessions.get(String(sessionId || ''));
     if (!record) return { ok: false, sessionId, status: 'not_found' };
-    record.terminal.kill();
-    return { ok: true, sessionId: record.sessionId, status: 'stopping' };
+    record.status = 'stopping';
+    if (process.platform === 'win32') {
+      record.terminal.write('\x03exit\r');
+    } else {
+      record.terminal.kill();
+    }
+    let exited = await Promise.race([
+      record.exitPromise.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
+    ]);
+    if (!exited && process.platform === 'win32' && record.pid) {
+      spawnSync('taskkill.exe', ['/PID', String(record.pid), '/T', '/F'], { windowsHide: true, timeout: 10_000 });
+      exited = await Promise.race([
+        record.exitPromise.then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 2000)),
+      ]);
+    }
+    return { ok: exited, sessionId: record.sessionId, status: exited ? 'exited' : 'stopping' };
   }
 }
 
