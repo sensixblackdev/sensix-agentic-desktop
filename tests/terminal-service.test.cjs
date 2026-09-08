@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { TerminalService, clampTimeout, outputPreview, resolveWorkingDirectory } = require('../terminal-service.cjs');
 
 test('clampTimeout normaliza limites operacionais', () => {
@@ -65,24 +66,12 @@ test('TerminalService inicia, consulta e encerra processo background', async (t)
   assert.equal(stopped.stopRequested, true);
 });
 
-test('TerminalService mantém sessão PTY e estado entre comandos', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sensix-terminal-pty-'));
-  const service = new TerminalService({ spilloverRoot: root });
-  const chunks = [];
-  const session = service.startSession({ cwd: root, onData: ({ data }) => chunks.push(data) });
-  t.after(async () => {
-    await service.stopSession(session.sessionId);
-    fs.rmSync(root, { recursive: true, force: true });
+test('TerminalService mantém sessão PTY e estado entre comandos', () => {
+  const check = spawnSync(process.execPath, [path.join(__dirname, 'fixtures', 'pty-session-check.cjs')], {
+    encoding: 'utf8',
+    timeout: 20_000,
+    windowsHide: true,
   });
-
-  service.writeSession(session.sessionId, "$sensixPtyState = 'persistent-ok'\r");
-  service.writeSession(session.sessionId, 'Write-Output $sensixPtyState\r');
-  const deadline = Date.now() + 10_000;
-  while (!chunks.join('').includes('persistent-ok') && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  assert.match(chunks.join(''), /persistent-ok/);
-  assert.equal(service.resizeSession(session.sessionId, 100, 24).ok, true);
-  assert.equal(service.writeSession(session.sessionId, '').ok, true);
+  assert.equal(check.status, 0, check.stderr || check.error?.message);
+  assert.match(check.stdout, /PTY_SESSION_OK/);
 });
