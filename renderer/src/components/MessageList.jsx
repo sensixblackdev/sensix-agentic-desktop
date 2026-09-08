@@ -307,7 +307,7 @@ export function MessageList({ messages = [], isThinking = false }) {
         );
       })}
 
-      {isThinking && (
+      {isThinking && !messages.some((msg) => msg?.role === 'assistant' && !msg?.content) && (
         <div className="thinking-indicator fade-in">
           <div className="thinking-pulse-dot"></div>
           <span>Agente raciocinando...</span>

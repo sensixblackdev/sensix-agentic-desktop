@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dev": "electron .",
+    "dev": "electron . --dev",
     "build:renderer": "vite build --config renderer/vite.config.mjs",
     "build": "npm run build:renderer",
     "dev:renderer": "vite --config renderer/vite.config.mjs",

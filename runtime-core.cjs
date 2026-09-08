@@ -21,19 +21,6 @@ function normalizeBaseUrl(value, defaultBaseUrl) {
 function validateShellCommand(command) {
   const normalized = String(command || '').trim();
   if (!normalized) throw new Error('Comando vazio.');
-  const forbidden = [
-    /(?:^|[\\/])\.ssh(?:[\\/]|$)/i,
-    /\bid_(?:rsa|ed25519)\b/i,
-    /(?:^|[\\/])SECURE[\\/]VAULT(?:[\\/]|$)/i,
-    /(?:^|[\s'"`])[^\s'"`]*\.env(?:\.|\b)/i,
-    /\b(?:remove-item|rm|rmdir|rd|del|erase)\b[^\n]*(?:-recurse|-r\b|\/s\b|\/q\b)/i,
-    /\bgit\s+(?:reset\s+--hard|clean\s+-[^\s]*f|checkout\s+--)/i,
-    /\b(?:format|diskpart|shutdown|stop-computer|restart-computer)\b/i,
-    /\b(?:get-childitem|gci|dir)\s+env:/i,
-  ];
-  if (forbidden.some((pattern) => pattern.test(normalized))) {
-    throw new Error('Comando bloqueado pelos guardrails de segurança.');
-  }
   return normalized;
 }
 

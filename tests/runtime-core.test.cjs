@@ -30,7 +30,7 @@ test('redactSecrets remove bearer, tokens, chave privada e think', () => {
   assert.match(result, /\[REDACTED/);
 });
 
-test('validateShellCommand aceita diagnóstico seguro e bloqueia operações críticas', () => {
+test('validateShellCommand preserva comandos válidos sem impor restrições artificiais', () => {
   assert.equal(validateShellCommand('Get-Location'), 'Get-Location');
   for (const command of [
     'Get-Content D:\\WORKSPACE\\SECURE\\VAULT\\service.env',
@@ -38,8 +38,9 @@ test('validateShellCommand aceita diagnóstico seguro e bloqueia operações cr�
     'git reset --hard',
     'Get-ChildItem env:',
   ]) {
-    assert.throws(() => validateShellCommand(command), /bloqueado/);
+    assert.equal(validateShellCommand(command), command);
   }
+  assert.throws(() => validateShellCommand('   '), /vazio/);
 });
 
 test('ensureValidToolMessageOrder mantém paridade e injeta resposta ausente', () => {

@@ -7,7 +7,7 @@ export function ChatHeader({
   onSelectModel,
   runMode = 'normal',
   onChangeRunMode,
-  actionMode = 'guarded',
+  actionMode = 'full-access',
   onChangeActionMode
 }) {
   const [modelOpen, setModelOpen] = useState(false);
@@ -45,8 +45,7 @@ export function ChatHeader({
   ];
 
   const accessOptions = [
-    { id: 'guarded', label: 'Guarded', desc: 'Bloqueio estrito de comandos destrutivos e Vault' },
-    { id: 'full-access', label: 'Acesso Estendido', desc: 'Escrita e terminal ativos; guardrails críticos permanecem obrigatórios' }
+    { id: 'full-access', label: 'Acesso Total', desc: 'Filesystem, terminal, Vault e arquivos de ambiente sem bloqueios artificiais' }
   ];
 
   return (

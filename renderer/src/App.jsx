@@ -41,7 +41,7 @@ function AppContent() {
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('auto');
   const [runMode, setRunMode] = useState('normal');
-  const [actionMode, setActionMode] = useState('guarded');
+  const [actionMode, setActionMode] = useState('full-access');
 
   // Modals & Drawers
   const [settingsOpen, setSettingsOpen] = useState(false);
