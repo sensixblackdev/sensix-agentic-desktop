@@ -50,7 +50,8 @@ test('TerminalService inicia, consulta e encerra processo background', async (t)
   const service = new TerminalService({ spilloverRoot: root });
   t.after(async () => {
     await service.stopAll();
-    fs.rmSync(root, { recursive: true, force: true });
+    await new Promise((r) => setTimeout(r, 200));
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
   });
   const started = await service.execute({
     command: "Write-Output 'started'; Start-Sleep -Seconds 30",
@@ -75,3 +76,25 @@ test('TerminalService mantém sessão PTY e estado entre comandos', () => {
   assert.equal(check.status, 0, check.stderr || check.error?.message);
   assert.match(check.stdout, /PTY_SESSION_OK/);
 });
+
+test('TerminalService garante timeout settle rápido sem pendurar execução', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sensix-terminal-timeout-'));
+  const service = new TerminalService({ spilloverRoot: root });
+  t.after(async () => {
+    await service.stopAll();
+    await new Promise((r) => setTimeout(r, 200));
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
+  });
+  const start = Date.now();
+  const result = await service.execute({
+    command: "Start-Sleep -Seconds 10",
+    cwd: root,
+    timeoutMs: 1_500,
+  });
+  const duration = Date.now() - start;
+  assert.equal(result.timedOut, true);
+  assert.equal(result.status, 'timed_out');
+  assert.ok(duration < 5000, `Deveria resolver no timeout em <5s (resolveu em ${duration}ms)`);
+});
+
+

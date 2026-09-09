@@ -697,11 +697,16 @@ async function shellExecTool(args, activeRun) {
   const command = String(args.command || '').trim();
   if (!command) throw new Error('Comando vazio.');
   const cwd = ensureWorkspacePath(args.cwd || '.');
+  const isExplicitBackground = Boolean(args.background);
+  const isAutoBackground = isExplicitBackground ||
+    /\bStart-Process\b/i.test(command) ||
+    /&\s*$/i.test(command) ||
+    /\b(?:node\s+\S*(?:server|app|daemon)\S*\.js|npm\s+run\s+dev|npm\s+start|pnpm\s+dev|yarn\s+dev)\b/i.test(command);
   const result = await terminalService.execute({
     command,
     cwd,
     timeoutMs: args.timeout_ms,
-    background: Boolean(args.background),
+    background: isAutoBackground,
     onStart: ({ processId }) => { activeRun.processId = processId; },
   });
   const baseResult = { ...result, cwd: relativeWorkspacePath(cwd) };

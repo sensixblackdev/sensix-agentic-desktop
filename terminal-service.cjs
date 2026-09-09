@@ -115,20 +115,36 @@ class TerminalService {
     child.stderr?.on('data', (chunk) => { record.stderrBytes += chunk.length; stderrStream.write(chunk); });
 
     const completion = new Promise((resolve, reject) => {
+      let settled = false;
+      let exitTimer = null;
+
       const finish = (code, signal) => {
+        if (settled) return;
+        settled = true;
         if (record.timer) clearTimeout(record.timer);
-        record.code = Number.isInteger(code) ? code : -1;
-        record.signal = signal || null;
+        if (exitTimer) clearTimeout(exitTimer);
+        record.code = Number.isInteger(code) ? code : (record.timedOut ? -1 : 0);
+        record.signal = signal || (record.timedOut ? 'SIGKILL' : null);
         record.status = record.timedOut ? 'timed_out' : (record.code === 0 ? 'completed' : 'failed');
         record.completedAt = new Date().toISOString();
         record.child = null;
+
+        try { child.stdout?.destroy(); } catch {}
+        try { child.stderr?.destroy(); } catch {}
+
         Promise.all([
           new Promise((done) => stdoutStream.end(done)),
           new Promise((done) => stderrStream.end(done)),
-        ]).then(() => resolve(this.snapshot(record)));
+        ]).then(() => resolve(this.snapshot(record))).catch(() => resolve(this.snapshot(record)));
       };
+
       child.once('error', (error) => {
+        if (settled) return;
+        settled = true;
         if (record.timer) clearTimeout(record.timer);
+        if (exitTimer) clearTimeout(exitTimer);
+        try { child.stdout?.destroy(); } catch {}
+        try { child.stderr?.destroy(); } catch {}
         stdoutStream.end();
         stderrStream.end();
         record.status = 'failed';
@@ -136,12 +152,26 @@ class TerminalService {
         record.child = null;
         reject(error);
       });
-      child.once('close', finish);
+
+      child.once('close', (code, signal) => finish(code, signal));
+      child.once('exit', (code, signal) => {
+        // If 'close' hasn't fired within 500ms (e.g. child background process inherited stdio pipes), settle cleanly!
+        exitTimer = setTimeout(() => {
+          finish(code, signal);
+        }, 500);
+      });
+
+      // Save finish on record for forced external cancellation
+      record.forceFinish = finish;
     });
+
     record.completion = completion;
     record.timer = setTimeout(() => {
       record.timedOut = true;
       this.stop(record.processId).catch(() => {});
+      if (typeof record.forceFinish === 'function') {
+        record.forceFinish(-1, 'SIGKILL');
+      }
     }, clampTimeout(timeoutMs, background ? MAX_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
 
     if (background) return this.snapshot(record);
@@ -198,18 +228,20 @@ class TerminalService {
     const record = this.processes.get(String(processId || ''));
     if (!record) return { ok: false, processId, status: 'not_found' };
     const pid = record.child?.pid;
-    if (!pid) return this.snapshot(record);
-    if (process.platform === 'win32') {
-      spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, timeout: 10_000 });
-    } else {
-      try { process.kill(-pid, 'SIGTERM'); } catch { try { record.child.kill('SIGTERM'); } catch {} }
+    if (pid && Number(pid) > 0) {
+      if (process.platform === 'win32') {
+        try {
+          spawn('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, detached: true });
+        } catch {}
+      } else {
+        try { process.kill(-pid, 'SIGKILL'); } catch { try { record.child?.kill('SIGKILL'); } catch {} }
+      }
     }
-    if (record.completion) {
-      const completed = await Promise.race([
-        record.completion,
-        new Promise((resolve) => setTimeout(() => resolve(this.snapshot(record)), 5000)),
-      ]);
-      return { ...completed, stopRequested: true };
+    try { record.child?.kill('SIGKILL'); } catch {}
+    try { record.child?.stdout?.destroy(); } catch {}
+    try { record.child?.stderr?.destroy(); } catch {}
+    if (typeof record.forceFinish === 'function') {
+      record.forceFinish(-1, 'SIGTERM');
     }
     return { ...this.snapshot(record), stopRequested: true };
   }

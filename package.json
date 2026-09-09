@@ -1,6 +1,6 @@
 {
   "name": "sensix-agentic-desktop",
-  "version": "0.3.30",
+  "version": "0.3.31",
   "description": "SENSIX Agentic Desktop — secure Electron runtime, isolated multi-session streaming, persistent projects and verified agent controls",
   "author": "AXION Enterprise <axionenterprise777@gmail.com>",
   "main": "main.cjs",
