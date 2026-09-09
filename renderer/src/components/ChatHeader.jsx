@@ -176,8 +176,8 @@ export function ChatHeader({
               }}
               title="Nível de Permissão & Guardrails"
             >
-              <ShieldCheck size={13} className={actionMode === 'full-access' ? 'text-warning' : 'text-accent'} />
-              <span>{accessOptions.find((o) => o.id === actionMode)?.label || actionMode}</span>
+              <ShieldCheck size={13} className="text-accent" />
+              <span>{accessOptions.find((o) => o.id === actionMode)?.label || 'Acesso Total'}</span>
               <ChevronDown size={11} className={`trigger-chevron ${accessOpen ? 'open' : ''}`} />
             </button>
 
